@@ -2703,6 +2703,29 @@ var save = () => {
 // Boyut: kayıt ~433 byte → 500 kayıt ~211 KB (Firestore 1 MB sınırının ~%21'i).
 var TX_HIST_MAX = 500;
 
+
+// ══════════════════════════════════════════════════════════════
+// ETKİN KALDIRAÇ — sembol marjı + hesap kaldıracı (2026-08-17)
+// ──────────────────────────────────────────────────────────────
+// Sembolün MARJ (%) alanı, o enstrümanda kaldıracı KISITLAMAK içindir
+// (ör. kriptoda 10 → 1:10). Kurallar:
+//  • margin <= 1 ise yok sayılır. Sebep: sembollerin çoğunda varsayılan 1
+//    kalıyor ve 100/1=100 hesabı, müşterinin 1:200 / 1:500 kaldıracını
+//    sessizce 1:100'e kilitliyordu (bu yüzden bir ara tamamen kaldırılmıştı).
+//  • margin > 1 ise sembol kaldıracı = 100/margin, ve hesap kaldıracıyla
+//    karşılaştırılıp HANGİSİ DAHA SIKIYSA o kullanılır. Sembol ayarı asla
+//    kaldıracı GEVŞETMEZ.
+// Bu fonksiyon; açılıştaki teminat (cost), ön kontrol ve kullanılan teminat
+// göstergesinin HEPSİNDE kullanılmalı — eskiden yalnız cost'ta vardı, bu
+// yüzden "MARJ 10 yaptım ama yine 1:100 kesiyor" durumu oluşuyordu.
+// ══════════════════════════════════════════════════════════════
+function _txEffLev(symCfg, accLev) {
+  var lev = parseFloat(accLev) || 100;
+  var m = symCfg ? parseFloat(symCfg.margin) : 0;
+  if (m > 1) lev = Math.min(lev, 100 / m);
+  return lev > 0 ? lev : 100;
+}
+
 var indActive = {ma:true, ema:true, bb:false, vol:false, macd:false, rsi:false};
 var indCfg    = {ma:20, ema:9, bb:20, bb_std:2, rsi:14, macd_fast:12, macd_slow:26, macd_sig:9};
 
@@ -4080,10 +4103,7 @@ function placeOrder(side) {
   // symConfig bilgilerini burada al - cost hesabından önce
   var _symCfgCost = symConfig ? symConfig.find(function(s){return s.sym===curSym;}) : null;
   var _contractSizeCost = _symCfgCost ? (parseFloat(_symCfgCost.contractSize)||1) : 1;
-  var _leverage = (_cu && _cu.leverage) ? parseFloat(_cu.leverage) : 100;
-  if(_symCfgCost && _symCfgCost.margin && _symCfgCost.margin > 0) {
-    _leverage = 100 / _symCfgCost.margin;
-  }
+  var _leverage = _txEffLev(_symCfgCost, (_cu && _cu.leverage) ? _cu.leverage : 100);
   const cost = (execPrice * qty * _contractSizeCost) / _leverage;
 
   // Mevcut sembol için net pozisyon hesapla (buy toplam - sell toplam)
@@ -4140,10 +4160,7 @@ function placeOrder(side) {
     var _fsd = _fmSyms[_fs];
     var _fsc = symConfig ? symConfig.find(function(s){return s.sym===_fs;}) : null;
     var _fcs = _fsc ? (parseFloat(_fsc.contractSize)||1) : 1;
-    var _flv = (_cu && _cu.leverage) ? parseFloat(_cu.leverage) : 100;
-    // ⚠️ KALDIRILDI: sembolün 'margin' alanı artık hesap kaldıracını geçersiz kılmıyor —
-    // çoğu sembolde margin:1 varsayılan olduğu için hesap kaldıracı hiçbir zaman etkili
-    // olmuyordu (her zaman sabit 1:100'e kilitleniyordu).
+    var _flv = _txEffLev(_fsc, (_cu && _cu.leverage) ? _cu.leverage : 100);
     _curMarginUsed += (Math.abs(_fsd.buyQty-_fsd.sellQty) * _fsd.price * _fcs) / _flv;
   });
   var _freeMarginNow = _curEquity - _curMarginUsed;
@@ -4182,8 +4199,7 @@ function placeOrder(side) {
     var _nq = Math.abs(_sq2.buyQty - _sq2.sellQty);
     var _symCfg3 = symConfig ? symConfig.find(function(s){return s.sym===_sym3;}) : null;
     var _cs3 = _symCfg3 ? (_symCfg3.contractSize||1) : 1;
-    var _lev3 = (_cu && _cu.leverage) ? parseFloat(_cu.leverage) : 100;
-    if(_symCfg3 && _symCfg3.margin && _symCfg3.margin > 0) _lev3 = 100 / _symCfg3.margin;
+    var _lev3 = _txEffLev(_symCfg3, (_cu && _cu.leverage) ? _cu.leverage : 100);
     _newMarginUsed += (_nq * _sq2.price * _cs3) / _lev3;
   }
   // Açık PL hesapla (mevcut pozisyonlar — yeni işlemin kendi anlık spread maliyeti
@@ -7896,9 +7912,7 @@ function txCalcStats(account, posArr) {
     var n=nets[sym], nq=Math.abs(n.buy-n.sell);
     var sc=cfg.find(function(s){return s.sym===sym;});
     var cs=sc?(parseFloat(sc.contractSize)||1):1;
-    // ⚠️ KALDIRILDI: sembolün 'margin' alanı artık hesap kaldıracını geçersiz kılmıyor
-    // (bkz. admin'deki adCalcStats'taki aynı düzeltme — sebebi orada açıklandı).
-    var lv=lev;
+    var lv=_txEffLev(sc, lev);
     margin+=(nq*n.price*cs)/lv;
   });
   return {

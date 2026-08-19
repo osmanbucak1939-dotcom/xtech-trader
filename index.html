@@ -4104,7 +4104,8 @@ function placeOrder(side) {
   var _symCfgCost = symConfig ? symConfig.find(function(s){return s.sym===curSym;}) : null;
   var _contractSizeCost = _symCfgCost ? (parseFloat(_symCfgCost.contractSize)||1) : 1;
   var _leverage = _txEffLev(_symCfgCost, (_cu && _cu.leverage) ? _cu.leverage : 100);
-  const cost = (execPrice * qty * _contractSizeCost) / _leverage;
+  // ⚠️ 2026-08-19: nosyonel USD'ye çevrilmeden bölünüyordu (bkz. txCalcStats notu)
+  const cost = _quoteToUsd(curSym, execPrice * qty * _contractSizeCost) / _leverage;
 
   // Mevcut sembol için net pozisyon hesapla (buy toplam - sell toplam)
   var _existBuyQty = 0, _existSellQty = 0;
@@ -4161,7 +4162,8 @@ function placeOrder(side) {
     var _fsc = symConfig ? symConfig.find(function(s){return s.sym===_fs;}) : null;
     var _fcs = _fsc ? (parseFloat(_fsc.contractSize)||1) : 1;
     var _flv = _txEffLev(_fsc, (_cu && _cu.leverage) ? _cu.leverage : 100);
-    _curMarginUsed += (Math.abs(_fsd.buyQty-_fsd.sellQty) * _fsd.price * _fcs) / _flv;
+    // ⚠️ 2026-08-19: USD dönüşümü eklendi (bkz. txCalcStats notu)
+    _curMarginUsed += _quoteToUsd(_fs, Math.abs(_fsd.buyQty-_fsd.sellQty) * _fsd.price * _fcs) / _flv;
   });
   var _freeMarginNow = _curEquity - _curMarginUsed;
   // netCost > 0 ise (net pozisyon artıyor) serbest teminat yeterliliğini kontrol et
@@ -4200,7 +4202,8 @@ function placeOrder(side) {
     var _symCfg3 = symConfig ? symConfig.find(function(s){return s.sym===_sym3;}) : null;
     var _cs3 = _symCfg3 ? (_symCfg3.contractSize||1) : 1;
     var _lev3 = _txEffLev(_symCfg3, (_cu && _cu.leverage) ? _cu.leverage : 100);
-    _newMarginUsed += (_nq * _sq2.price * _cs3) / _lev3;
+    // ⚠️ 2026-08-19: USD dönüşümü eklendi (bkz. txCalcStats notu)
+    _newMarginUsed += _quoteToUsd(_sym3, _nq * _sq2.price * _cs3) / _lev3;
   }
   // Açık PL hesapla (mevcut pozisyonlar — yeni işlemin kendi anlık spread maliyeti
   // bu ön-kontrolde yaklaşıksal olarak ihmal edilir, önceki davranışla aynı seviyede)
@@ -7938,8 +7941,14 @@ function txCalcStats(account, posArr) {
     var n=nets[sym], nq=Math.abs(n.buy-n.sell);
     var sc=cfg.find(function(s){return s.sym===sym;});
     var cs=sc?(parseFloat(sc.contractSize)||1):1;
+    // ⚠️ 2026-08-19 TEMİNAT PARA BİRİMİ DÜZELTMESİ
+    // Teminat "fiyat × lot × kontrat / kaldıraç" ile hesaplanıyordu ve sonuç
+    // sembolün KOTASYON para biriminde çıkıp USD sanılıyordu. USDJPY'de bu
+    // yen cinsinden bir rakamdı: 1 lot için ~70.000 "USD" teminat görünüyordu,
+    // doğrusu ~1.000 USD. Dolar bacaklı olmayan tüm sembolleri etkiliyordu.
+    // Nosyonel değeri USD'ye çevirdikten SONRA kaldıraca bölüyoruz.
     var lv=_txEffLev(sc, lev);
-    margin+=(nq*n.price*cs)/lv;
+    margin+=_quoteToUsd(sym, nq*n.price*cs)/lv;
   });
   return {
     balance:bal, bonus:bonus, openPnl:openPnl, equity:equity,

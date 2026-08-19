@@ -6917,6 +6917,16 @@ function txApplyPrice(sym, rawMid, _synthetic) {
     window._txBase[sym] = rawMid;
     return;
   }
+  // ⚠️ 2026-08-19 FİYAT DONDURMA
+  // Sembolün seansı kapalıysa gelen tick'i İŞLEME. prices[sym] olduğu gibi
+  // kalır → son fiyat donar, grafik ilerlemez, K/Z değişmez. Sunucudaki risk
+  // motorları da aynı seans motorunu kullandığı için kapalıyken stop-out
+  // vermez; ikisi ayrışırsa müşteri donmuş fiyat görürken pozisyonu kapanır.
+  // İlk fiyat henüz yoksa dondurma (ekranda "—" kalmasın diye) bir kez yazılır.
+  if(typeof _txSymOpen === 'function' && prices[sym] && prices[sym].price > 0 && !_txSymOpen(sym)) {
+    return;
+  }
+
   // Titreme tabanı: yalnızca GERÇEK (sentetik olmayan) tick'lerde güncellenir.
   // Sentetik titreme bu taban etrafında ±1-2 pip salınır, sürüklenmez.
   if(!_synthetic){ if(!window._txBase) window._txBase = {}; window._txBase[sym] = rawMid; }
@@ -9565,7 +9575,12 @@ function symUnpin(sym){
     var setc = function(id,c){var e=document.getElementById(id);if(e)e.style.color=c;};
     var pnl = parseFloat(h.pnl)||0;
     var dt = h.closeTime?new Date(h.closeTime).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
-    var dtOpen = h.openTime?new Date(h.openTime).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+    // ⚠️ 2026-08-19: yalnız h.openTime'a bakılıyordu, ama pozisyon açılırken
+    // açılış zamanı 'time' alanına yazılıyor (openTime yalnız bazı yollarda var).
+    // Bu yüzden kapanan pozisyon detayında açılış saati hep '—' görünüyordu.
+    // Diğer yerlerdeki (pos.openTime || pos.time) kalıbıyla eşitlendi.
+    var _hOpenT = h.openTime || h.time || h.openDate || null;
+    var dtOpen = _hOpenT?new Date(_hOpenT).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
     _mPosId = null;
     set('mPMSym', (h.label||h.sym));
     set('mPMType', (h.side==='buy'?'▲ '+((_LANGS[_curLang]||_LANGS.tr).buy):'▼ '+((_LANGS[_curLang]||_LANGS.tr).sell))+' · '+((_LANGS[_curLang]||_LANGS.tr).closedStatus));
@@ -10016,6 +10031,177 @@ function symUnpin(sym){
 
 <script>
 
+// ══════════════════════════════════════════════════════════════════════
+// SEANS (PİYASA SAATLERİ) MOTORU — 2026-08-19
+// ──────────────────────────────────────────────────────────────────────
+// Trader / admin / köprü / Cloud Functions'ın HEPSİ bu mantığı kullanır.
+// Aralarında en ufak sapma olursa: müşteri kapalı sanırken sunucu açık sanar
+// (veya tersi) ve piyasa kapalıyken stop-out verilir. Değiştirirken DÖRDÜNÜ
+// birden güncelle.
+//
+// VERİ YAPISI — Firestore: broker/sessions
+// {
+//   templates: [
+//     { id:'crypto', name:'Kripto', tz:3, always:true },
+//     { id:'forex',  name:'Forex',  tz:3,
+//       days:{ 1:[['01:00','23:59']], 2:[['01:00','23:59']], ... } },   // 0=Pazar
+//     { id:'usidx',  name:'ABD Endeks', tz:3,
+//       days:{ 1:[['16:30','23:00']], ... } }
+//   ],
+//   holidays: [ {date:'2026-12-25', templates:['usidx']},   // templates boş = hepsi
+//               {date:'2026-10-29'} ],
+//   defaultTemplate: 'forex'
+// }
+// Sembol → şablon bağı symConfig'teki `sessionId` alanındadır.
+// sessionId yoksa: sembol USDT/USDC ile bitiyorsa 'crypto', değilse
+// defaultTemplate kullanılır (eski davranışla uyumlu).
+//
+// NOT: Saatler şablonun kendi zaman diliminde (tz, GMT ofseti) yorumlanır.
+// Bir aralığın bitişi başlangıcından küçükse GECE YARISINI AŞAN seans sayılır
+// (ör. 22:00–06:00).
+// ══════════════════════════════════════════════════════════════════════
+
+function _txSessNorm(cfg) {
+  cfg = cfg || {};
+  return {
+    templates: Array.isArray(cfg.templates) ? cfg.templates : [],
+    holidays: Array.isArray(cfg.holidays) ? cfg.holidays : [],
+    defaultTemplate: cfg.defaultTemplate || 'forex'
+  };
+}
+
+function _txSessPickId(sym, symCfg, cfg) {
+  if (symCfg && symCfg.sessionId) return symCfg.sessionId;
+  var s = String(sym || '').toUpperCase();
+  if (s.endsWith('USDT') || s.endsWith('USDC')) return 'crypto';
+  return _txSessNorm(cfg).defaultTemplate;
+}
+
+function _txSessFind(cfg, id) {
+  var c = _txSessNorm(cfg);
+  for (var i = 0; i < c.templates.length; i++) {
+    if (c.templates[i] && c.templates[i].id === id) return c.templates[i];
+  }
+  return null;
+}
+
+// 'HH:MM' → dakika. Geçersizse null.
+function _txSessMin(hhmm) {
+  var m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || '').trim());
+  if (!m) return null;
+  var h = parseInt(m[1], 10), mi = parseInt(m[2], 10);
+  if (h > 23 || mi > 59) return null;
+  return h * 60 + mi;
+}
+
+// Şablonun zaman dilimindeki "şimdi" — {day, min, ymd}
+function _txSessNow(tzOffsetHours, nowMs) {
+  var tz = (tzOffsetHours === undefined || tzOffsetHours === null) ? 3 : parseFloat(tzOffsetHours);
+  if (isNaN(tz)) tz = 3;
+  var d = new Date((nowMs || Date.now()) + tz * 3600000);
+  var mm = d.getUTCMonth() + 1, dd = d.getUTCDate();
+  return {
+    day: d.getUTCDay(),
+    min: d.getUTCHours() * 60 + d.getUTCMinutes(),
+    ymd: d.getUTCFullYear() + '-' + (mm < 10 ? '0' : '') + mm + '-' + (dd < 10 ? '0' : '') + dd
+  };
+}
+
+function _txSessIsHoliday(cfg, tplId, nowInfo) {
+  var c = _txSessNorm(cfg);
+  for (var i = 0; i < c.holidays.length; i++) {
+    var h = c.holidays[i];
+    if (!h || h.date !== nowInfo.ymd) continue;
+    // templates boş/yoksa TÜM şablonlar için tatil
+    if (!h.templates || !h.templates.length) return true;
+    if (h.templates.indexOf(tplId) >= 0) return true;
+  }
+  return false;
+}
+
+// Asıl fonksiyon: sembol şu an işleme açık mı?
+// Dönüş: { open:bool, reason:'ok'|'holiday'|'closed'|'no-template', tpl:<id> }
+function txSessionState(sym, symCfg, cfg, nowMs) {
+  var c = _txSessNorm(cfg);
+  // Hiç şablon tanımlanmamışsa sistem eskisi gibi davransın (her şey açık)
+  if (!c.templates.length) return { open: true, reason: 'no-template', tpl: null };
+
+  var tplId = _txSessPickId(sym, symCfg, c);
+  var tpl = _txSessFind(c, tplId);
+  if (!tpl) return { open: true, reason: 'no-template', tpl: tplId };
+
+  var now = _txSessNow(tpl.tz, nowMs);
+
+  if (_txSessIsHoliday(c, tplId, now)) return { open: false, reason: 'holiday', tpl: tplId };
+  if (tpl.always) return { open: true, reason: 'ok', tpl: tplId };
+
+  var days = tpl.days || {};
+  var todays = days[now.day] || days[String(now.day)] || [];
+  for (var i = 0; i < todays.length; i++) {
+    var a = _txSessMin(todays[i][0]), b = _txSessMin(todays[i][1]);
+    if (a === null || b === null) continue;
+    if (a <= b) { if (now.min >= a && now.min <= b) return { open: true, reason: 'ok', tpl: tplId }; }
+    else { if (now.min >= a || now.min <= b) return { open: true, reason: 'ok', tpl: tplId }; } // gece yarısını aşan
+  }
+
+  // Dünkü gece yarısını aşan seans hâlâ sürüyor olabilir
+  var prevDay = (now.day + 6) % 7;
+  var yest = days[prevDay] || days[String(prevDay)] || [];
+  for (var j = 0; j < yest.length; j++) {
+    var a2 = _txSessMin(yest[j][0]), b2 = _txSessMin(yest[j][1]);
+    if (a2 === null || b2 === null) continue;
+    if (a2 > b2 && now.min <= b2) return { open: true, reason: 'ok', tpl: tplId };
+  }
+
+  return { open: false, reason: 'closed', tpl: tplId };
+}
+
+function txSessionIsOpen(sym, symCfg, cfg, nowMs) {
+  return txSessionState(sym, symCfg, cfg, nowMs).open;
+}
+
+// Varsayılan şablonlar — ayar hiç yoksa admin ilk açılışta bunları yazar
+var TX_SESSION_DEFAULTS = {
+  defaultTemplate: 'forex',
+  holidays: [],
+  templates: [
+    { id: 'crypto', name: 'Kripto (7/24)', tz: 3, always: true },
+    { id: 'forex', name: 'Forex / Emtia', tz: 3, days: {
+        1: [['00:00', '23:59']], 2: [['00:00', '23:59']], 3: [['00:00', '23:59']],
+        4: [['00:00', '23:59']], 5: [['00:00', '23:59']] } },
+    { id: 'usidx', name: 'ABD Endeks / Hisse', tz: 3, days: {
+        1: [['16:30', '23:00']], 2: [['16:30', '23:00']], 3: [['16:30', '23:00']],
+        4: [['16:30', '23:00']], 5: [['16:30', '23:00']] } },
+    { id: 'bist', name: 'BIST', tz: 3, days: {
+        1: [['10:00', '18:10']], 2: [['10:00', '18:10']], 3: [['10:00', '18:10']],
+        4: [['10:00', '18:10']], 5: [['10:00', '18:10']] } }
+  ]
+};
+
+// ── Seans ayarını Firestore'dan canlı izle (broker/sessions) ──────────
+var _txSessCfg = { templates: [], holidays: [], defaultTemplate: 'forex' };
+function _txWatchSessions(){
+  try{
+    if(typeof db==='undefined' || !db) return;
+    db.collection('broker').doc('sessions').onSnapshot(function(snap){
+      var d = snap.exists ? snap.data() : null;
+      if(d && d.data){ try{ d = (typeof d.data==='string') ? JSON.parse(d.data) : d.data; }catch(e){} }
+      _txSessCfg = _txSessNorm(d || {});
+      if(typeof _checkMarketStatus==='function'){ try{ _checkMarketStatus(); }catch(e){} }
+    }, function(e){ console.warn('[seans] izlenemedi:', e && e.message); });
+  }catch(e){ console.warn('[seans] baslatilamadi:', e && e.message); }
+}
+
+// Sembol şu an açık mı? (symConfig'ten sessionId okunur)
+function _txSymOpen(sym){
+  var sc = (typeof _txGetSymConf==='function') ? _txGetSymConf(sym) : null;
+  return txSessionIsOpen(sym, sc, _txSessCfg);
+}
+function _txSymState(sym){
+  var sc = (typeof _txGetSymConf==='function') ? _txGetSymConf(sym) : null;
+  return txSessionState(sym, sc, _txSessCfg);
+}
+
 // ── Piyasa Saatleri Modülü (GMT+3) ──────────────────────────────
 var _marketHours = {
   // Forex/Emtia: Pazartesi 00:00 - Cuma 23:59 GMT+3
@@ -10041,6 +10227,13 @@ var _marketHours = {
     return true; // Kripto 7/24 açık
   },
   isOpen: function(sym) {
+    // ⚠️ 2026-08-19: Eskiden sadece "USDT ile bitiyorsa 7/24, değilse Pzt-Cum"
+    // vardı; endeksler/BIST de 7/24 açık sayılıyordu. Artık admin'den
+    // yönetilen seans şablonları geçerli. Şablon tanımlı değilse motor
+    // her şeye açık der → eski davranış korunur.
+    if(typeof txSessionIsOpen === 'function' && _txSessCfg && _txSessCfg.templates && _txSessCfg.templates.length){
+      return _txSymOpen(sym);
+    }
     var isCrypto = sym && sym.endsWith('USDT');
     return isCrypto ? _marketHours.cryptoOpen() : _marketHours.forexOpen();
   },
@@ -10057,6 +10250,9 @@ var _marketHours = {
 // Piyasa durumu kontrolü - her dakika çalışır
 var _marketStatusInterval = null;
 function startMarketStatusChecker() {
+  if(typeof _txWatchSessions==='function' && !window._txSessWatching){
+    window._txSessWatching = true; _txWatchSessions();
+  }
   if(_marketStatusInterval) clearInterval(_marketStatusInterval);
   _checkMarketStatus();
   _marketStatusInterval = setInterval(_checkMarketStatus, 60000);
@@ -10070,8 +10266,10 @@ function _checkMarketStatus() {
   if(typeof MARKET_GROUPS !== 'undefined') {
     MARKET_GROUPS.forEach(function(g) {
       g.items && g.items.forEach(function(it) {
-        var isCrypto = it.sym && it.sym.endsWith('USDT');
-        var isOpen = isCrypto ? true : forexOpen;
+        // Seans şablonu tanımlıysa sembol bazında sor; değilse eski davranış
+        var isOpen = (typeof _marketHours!=='undefined')
+          ? _marketHours.isOpen(it.sym)
+          : ((it.sym && it.sym.endsWith('USDT')) ? true : forexOpen);
         var row = document.querySelector('[data-sym="' + it.sym + '"]');
         if(!row) return;
         if(isOpen) {

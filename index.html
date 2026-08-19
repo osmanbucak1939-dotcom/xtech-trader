@@ -5476,6 +5476,9 @@ var MARKET_GROUPS = [
       {sym:'USOIL',   name:'WTI/USD',  full:'Ham Petrol (WTI)',        icon:'🛢', spread:0.03,   decimals:2},
       {sym:'BRTUSD',  name:'BRENT',    full:'Brent Petrol',            icon:'⛽', spread:0.03,   decimals:2},
       {sym:'NGAS',    name:'NAT GAS',  full:'Doğal Gaz',               icon:'🔥', spread:0.005,  decimals:3},
+      // ⚠️ 2026-08-19: Paladyum köprüde (YMAP: PA=F) besleniyordu ama katalogda
+      // yoktu — bu yüzden "Eksikleri içe aktar" ile de eklenemiyordu.
+      {sym:'XPDUSD',  name:'XPD/USD',  full:'Paladyum / Dolar',        icon:'⬢',  spread:1.50,   decimals:2},
     ]
   },
   {
@@ -5512,7 +5515,20 @@ var MARKET_GROUPS = [
   },
   {
     id:'stocks', label:'HİSSELER', open:false,
-    items:[]   // Hisseler admin'de category:'stock' ile eklenince symConfig'ten buraya akar
+    // ⚠️ 2026-08-19: Bu grup BOŞTU. Köprü bu 8 hisseyi zaten besliyordu
+    // (YMAP: AAPL/TSLA/AMZN/GOOGL/NVDA/NFLX/WMT/BA) ama katalogda tanımlı
+    // olmadıkları için admin'deki "Eksikleri içe aktar" onları ekleyemiyordu.
+    // contractSize=1, K/Z doğrudan USD (bkz. _USD_CONTRACTS listesi).
+    items:[
+      {sym:'AAPL',  name:'AAPL',  full:'Apple Inc.',        icon:'', spread:0.05, decimals:2},
+      {sym:'TSLA',  name:'TSLA',  full:'Tesla Inc.',        icon:'', spread:0.08, decimals:2},
+      {sym:'AMZN',  name:'AMZN',  full:'Amazon.com Inc.',   icon:'', spread:0.06, decimals:2},
+      {sym:'GOOGL', name:'GOOGL', full:'Alphabet Inc. (A)', icon:'', spread:0.06, decimals:2},
+      {sym:'NVDA',  name:'NVDA',  full:'NVIDIA Corp.',      icon:'', spread:0.06, decimals:2},
+      {sym:'NFLX',  name:'NFLX',  full:'Netflix Inc.',      icon:'', spread:0.12, decimals:2},
+      {sym:'WMT',   name:'WMT',   full:'Walmart Inc.',      icon:'', spread:0.05, decimals:2},
+      {sym:'BA',    name:'BA',    full:'Boeing Co.',        icon:'', spread:0.08, decimals:2},
+    ]   // Hisseler admin'de category:'stock' ile eklenince symConfig'ten buraya akar
   }
 ];
 

@@ -5352,7 +5352,7 @@ function startLiveFeed() {
     var p0 = (_saved[sym]>0) ? _saved[sym] : cfg.p;
     if(_saved[sym]>0) cfg.p = _saved[sym];
     mwPrices[sym] = {price:p0, prev:p0, chg:0};
-    prices[sym]   = {price:p0, chg:0, bid:p0, ask:p0};
+    prices[sym]   = {price:p0, chg:0, bid:p0, ask:p0, _seed: !(_saved[sym]>0)};
   }
   applySymConfig();
   renderMarketWatch();
@@ -5887,12 +5887,18 @@ function applySymConfig() {
     // SIM_PRICES ve prices'a da ekle
     if(!SIM_PRICES[s.sym]) {
       var _sv = 0; try{ var _o = window._txPersist || JSON.parse(localStorage.getItem('tx_lastp')||'{}'); _sv = _o[s.sym]||0; }catch(e){}
-      var bp = (_sv>0) ? _sv : ((s.priceSource && SIM_PRICES[s.priceSource]) ? SIM_PRICES[s.priceSource].p : 1);
+      // ⚠️ 2026-09-19: kayıtlı fiyat yoksa buraya 1 yazılıyordu. Tarayıcı hafızası
+      // dolu olan cihazda fark edilmiyor ama YENİ bir cihazda ilk açılışta tüm
+      // semboller 1.00 görünüyordu. Katalogdaki temsilî fiyatı tercih et.
+      var bp = (_sv>0) ? _sv
+             : ((s.priceSource && SIM_PRICES[s.priceSource]) ? SIM_PRICES[s.priceSource].p
+             : (parseFloat(s.mockPrice)>0 ? parseFloat(s.mockPrice) : 1));
       SIM_PRICES[s.sym] = {p: bp, v: 0.001, d: parseInt(s.decimals)||2};
     }
     if(!prices[s.sym]) {
       var p0 = SIM_PRICES[s.sym].p;
-      prices[s.sym]   = {price: p0, chg: 0, bid: p0, ask: p0};
+      // _seed: gerçek bir tick değil, yer tutucu. Sıçrama filtresi buna takılmasın.
+      prices[s.sym]   = {price: p0, chg: 0, bid: p0, ask: p0, _seed: true};
       mwPrices[s.sym] = {price: p0, prev: p0, chg: 0};
     }
   });
@@ -7156,7 +7162,10 @@ function txApplyPrice(sym, rawMid, _synthetic) {
   // sağlayıcı arızasında (gözlemlenen: WTI 1.00, NASDAQ ~25000) hatalı fiyat
   // SL/TP tetikleyip ekranda da yanlış K/Z gösteriyordu. Tek seferlik sapma
   // elenir; arka arkaya doğrulanan gerçek hareket geçer.
-  if(!_synthetic && prices[sym] && prices[sym].price > 0) {
+  // ⚠️ 2026-09-19: _seed (yer tutucu) fiyata göre kıyas YAPMA. Yeni cihazda
+  // semboller 1.00 ile tohumlandığı için ilk gerçek tick %8000 sapma gibi
+  // görünüyor ve filtre onu reddediyordu — fiyat 1.00'da takılı kalıyordu.
+  if(!_synthetic && prices[sym] && prices[sym].price > 0 && !prices[sym]._seed) {
     var _lastP = prices[sym].price;
     var _devPct = Math.abs(rawMid - _lastP) / _lastP * 100;
     if(_devPct > TX_MAX_JUMP_PCT) {

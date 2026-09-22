@@ -16,10 +16,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="XTech Terminal">
   <meta name="application-name" content="XTech Terminal">
-  <meta name="theme-color" content="#1565c0">
+  <meta name="theme-color" content="#141414">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAIAAADdvvtQAAAEkUlEQVR4nO3UUZLbIBQF0Xw7+19MdpUlpFIzCZYsy4AQzYM+pQWYd3vmxw9JkiRJkiRJktTBoxz9kwWpaMWqlnZrMfY0LbCbV/QxlIfuJAt9JL2gk6hEn01h03lGn3BV9O6N0edcBj307egDz4tetiv62HOh18TQh58CPSKMPn9k9HYDoaeIht5rUPQsQdAzDY0eZ2z0OmHQQw2JHiUYeq7B0HOERI82BnqF8OgBUfTxJ0HPCKHPPhV6zO7og0+InrQX+s6To+e9GX3eJdAj34Y+7ELoqW/w7qm/f/30u/It0dDJ3wo+QPRv/v9D5/9s8QGif+fnpce/7Px5BnR3QOEbMiADqvfxbQbUIaCoDeU8zID6BBSvocxXGVC3gCI1lP8kA+oZUJiGDMiA6hW9x4A6BzR6Q6WPMaD+AY3bUMVLDAgJaNCGDMiA6tU9w4CogMZqqPoNBgQGNFBDBmRA9a48wIDYgIZoyIAMCKvHgPCAyIau//SHAQ0Q0INqqMlPxweI/jVZIWo9DwMaI6BH/4Za/W58gOhfqyFC1vMwoGECevRsqOGPxgeI/jXcwoBW/BpuEa+e/mIt2p8BfWBA56znAwP6yIDOGNBH1nPGgHIY0FsGlMOA3jKgHNbzlgFlMqBjBpTJgI4ZUCYDOmZAmaznmAHlM6ADBpTPgA4YUD7rOWBARQxoz4CKGNCeARUxoD0DKmJAewZUxHr2DKiUAW0YUCkD2jCgUga0YUClDGjDgEoZ0IYBlTKgDQMqZT0bBlTBgBIDqmBAiQFVMKDEgCoYUGJAFQwoMaAKBpQYUAUDSgyoggElBlTBgBIDqmBAiQFVMKDEgCoYUGJAFQwoMaAKBpQYUAUDSgyoggElBlShPqD5GjKgUpfqMSADMqANAyplQBsGVMqANgyolAFtGFApA9owoFJXA5qsIQMq0qAeAzIgA0oMqIgB7RlQEQPaM6AibQKaqSEDytesHgMyIAP6ZkD5WgY0TUMGlKlxPQZkQAb0lwFlMqBjBpSpfUBzNGRAOW6px4AMyIAMKMtdAU3QkAF9dGM9BmRAqzdkQOdur8eADGjphgzoRKd6DMiADMiADvQLKG5DBvRO13oMyIAWbciADgH1GJABrdiQAb3C6onYkAHtwPUYkAE1QB+hgAE9o8P5h75DAQN6RofzhD5FLgP6j07mBX2QLAb0hY7lCH2TLAb0hY7lDfosnxnQY9h6vtDH+cCA6EAy0Cc6s3hAdBp56CudMaAY6EO9tXJAdBSF6HMdWzYgOocq9NEOrBkQHcIF9On2FgyITuAa+np7BhQPfcCN1QKix2+EPmOyVED07E3Rx/y2TkD04DegT7oQeurb0IddAj3yzejzTo6etxf6zhOiJ+2OPvhU6DEh9NknQc+Ioo8fHj3gGOgVQqJHGww9RzD0XEOiRwmDHmps9DpDo8cJgp5pUPQs0dB7DYSeIjJ6Oxh9/inQI2Low8+FXrMr+tjzope9HX3gZdBDN0afc1X07g3QJ1TYjOiz6QWdRBb6SMpDd7JBH0MX2I1ashi1ZyuSJEmSJEmSdJM/pyVHHWNfrJcAAAAASUVORK5CYII=">
-  <meta name="theme-color" content="#1565c0">
   <link rel="manifest" href="/manifest.json">
 <title>XTech Terminal</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -28,6 +27,22 @@
 html { touch-action: manipulation; }
 html { overscroll-behavior: none; -webkit-overflow-scrolling: auto; }
 body { touch-action: manipulation; -webkit-text-size-adjust: 100%; overscroll-behavior: none; -webkit-overscroll-behavior: none; }
+/* ⚠️ 2026-09-19 — MOBİL UYGULAMA HİSSİ
+   viewport-fit=cover ile sayfa ekranın kenarına kadar çiziliyor; çentik ve ev
+   çubuğu altında içerik kalmasın diye güvenli alan payı veriliyor. Masaüstünde
+   bu değerler 0'dır, hiçbir etkisi olmaz. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+body { padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); box-sizing: border-box; }
+/* Kurulu uygulamada metin seçimi/uzun basma menüsü kapalı: web değil, uygulama hissi */
+@media (display-mode: standalone) {
+  body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+         overscroll-behavior: none; }
+  input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; }
+}
+
 :root {
   --bg:       #141414;
   --panel:    #1e1e1e;
@@ -128,9 +143,17 @@ body { background:var(--bg); color:var(--text); font-family:var(--sans); font-si
 .user-dd-item .dd-icon { font-size:13px; width:16px; text-align:center; }
 .user-dd-item.danger { color:var(--sell); }
 .user-dd-divider { height:1px; background:var(--border); margin:4px 0; }
+/* ⚠️ 2026-09-22: Perdeler %75-85 karartıyordu. Panelin rengi doğru olmasına
+   rağmen arkadaki sayfa neredeyse siyaha indiği için panel olduğundan çok daha
+   AÇIK görünüyor ve "başka tema" hissi veriyordu. Karartma azaltıldı, arkaya
+   hafif bulanıklık eklendi — panel uygulamanın üstünde bir katman gibi duruyor. */
+/* ⚠️ 2026-09-22: Perdeler %70-85 karartıyordu. Panelin rengi doğru olmasına
+   rağmen arkadaki sayfa neredeyse siyaha indiği için panel olduğundan çok daha
+   AÇIK görünüyor, "başka tema" hissi veriyordu. Karartma %55'e indirildi ve
+   arkaya hafif bulanıklık eklendi — panel artık uygulamanın bir katmanı gibi. */
 /* KYC Modal */
 .kyc-modal {
-  position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:10000;
+  position:fixed; inset:0; background:rgba(0,0,0,.55); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); z-index:10000;
   display:none; align-items:center; justify-content:center;
 }
 .kyc-modal.open { display:flex; }
@@ -156,7 +179,7 @@ body { background:var(--bg); color:var(--text); font-family:var(--sans); font-si
 .kyc-step-status.rejected { color:var(--sell); }
 /* Şifre Modal */
 .pw-modal {
-  position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:10000;
+  position:fixed; inset:0; background:rgba(0,0,0,.55); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); z-index:10000;
   display:none; align-items:center; justify-content:center;
 }
 .pw-modal.open { display:flex; }
@@ -393,7 +416,7 @@ body { background:var(--bg); color:var(--text); font-family:var(--sans); font-si
 
 /* ── MANAGER OVERLAY ── */
 .mgr-overlay {
-  position:fixed; inset:0; background:rgba(0,0,0,.7);
+  position:fixed; inset:0; background:rgba(0,0,0,.55); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
   z-index:500; display:none; align-items:center; justify-content:center;
 }
 .mgr-overlay.open { display:flex; }/* MANAGER SIDEBAR */
@@ -513,7 +536,7 @@ body { background:var(--bg); color:var(--text); font-family:var(--sans); font-si
 
 /* ── PARA YATIR / ÇEK PANELİ ── */
 .wallet-overlay {
-  position:fixed; inset:0; background:rgba(0,0,0,.75);
+  position:fixed; inset:0; background:rgba(0,0,0,.55); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
   z-index:9000; display:none; align-items:center; justify-content:center;
 }
 .wallet-overlay.open { display:flex; }
@@ -908,7 +931,7 @@ body { background:var(--bg); color:var(--text); font-family:var(--sans); font-si
 /* ── TWELVE DATA API KEY MODAL ── */
 .apikey-modal {
   position:fixed; inset:0; z-index:700;
-  background:rgba(0,0,0,.85); display:none;
+  background:rgba(0,0,0,.55); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); display:none;
   align-items:center; justify-content:center;
   backdrop-filter:blur(4px);
 }
@@ -2295,7 +2318,15 @@ function _txClearPasswordChangedSession() {
       </button>
       <div class="ind-sep"></div>
       <span style="font-family:var(--mono);font-size:10px;color:var(--muted);padding:0 8px" id="indValueDisplay"></span>
-      <div style="position:relative;margin-left:auto">
+      <!-- ⚠️ 2026-09-22 YAKINLAŞTIRMA — gösterge çubuğundaki boşlukta.
+           Grafiğin sağ altındaydı ama orada fiyat etiketleriyle çakışıyordu;
+           burada hem hazır boşluk var hem de diğer grafik kontrolleriyle bir arada. -->
+      <div style="display:flex;align-items:center;gap:1px;margin-left:auto;background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:2px">
+        <button type="button" aria-label="Uzaklaştır" title="Uzaklaştır (mumları daralt)" onclick="lwZoom(-1)" style="width:24px;height:22px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;border-radius:4px;color:var(--text);cursor:pointer;font-family:var(--sans);font-size:15px;line-height:1">&minus;</button>
+        <button type="button" aria-label="Varsayılan yakınlık" title="Varsayılana dön" onclick="lwZoomReset()" style="min-width:22px;height:22px;padding:0 3px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;border-radius:4px;color:var(--muted);cursor:pointer;font-family:var(--mono);font-size:10px;line-height:1"><span id="lwZoomLbl">9</span></button>
+        <button type="button" aria-label="Yakınlaştır" title="Yakınlaştır (mumları genişlet)" onclick="lwZoom(1)" style="width:24px;height:22px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;border-radius:4px;color:var(--text);cursor:pointer;font-family:var(--sans);font-size:15px;line-height:1">+</button>
+      </div>
+      <div style="position:relative;margin-left:8px">
         <button class="ind-settings-btn" onclick="toggleIndPopup()"><span class="_ui-gear"></span> <span data-lang="settingsBtn">Ayarlar</span></button>
         <div class="ind-popup" id="indPopup">
           <div class="ind-popup-title">İNDİKATÖR AYARLARI</div>
@@ -3342,7 +3373,13 @@ function lwRenderCandles(candles, sym) {
   setTimeout(function() {
     if(_lw) {
       _lw.priceScale('right').applyOptions({autoScale: true});
-      _lw.timeScale().fitContent();
+      // ⚠️ 2026-09-22: fitContent() elde ne varsa (300 mum) ekrana SIĞDIRIYORDU;
+      // mumlar 1-2 piksele iniyor, son mumlar ayırt edilemiyordu. Artık mum
+      // GENİŞLİĞİ sabitleniyor (_lwBarSpacing) ve son mumlara kaydırılıyor —
+      // ekrana kaç mum sığacağı ekran genişliğine göre kendiliğinden belirlenir.
+      // Yan fayda: mumlar genişleyince zaman ekseninde daha çok etiket çıkıyor,
+      // dolayısıyla DİKEY ızgara çizgileri de sıklaşıyor (ızgara kareye yakınsıyor).
+      _lwApplyZoom();
       _lwUserScrolled = false;
     }
   }, 100);
@@ -3584,6 +3621,44 @@ function cancelPending(i) {
   if(typeof fbSaveUserData==='function' && _cu) fbSaveUserData(_cu.id, {pendingOrders: pendingOrders});
   renderPendingOrders();
   { var _cnL=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null); showToast(_cnL?_cnL.cancelledTitle:'İptal Edildi', _cnL?_cnL.pendingCancelledMsg:'Bekleyen emir iptal edildi'); }
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// GRAFİK YAKINLAŞTIRMA (2026-09-22)
+// _lwBarSpacing = bir mumun kapladığı piksel. Büyüdükçe mumlar genişler ve
+// ekrana daha az mum sığar (yakınlaşma). Kullanıcı seçimi hatırlanır.
+// ══════════════════════════════════════════════════════════════
+var _LW_ZOOM_MIN = 3, _LW_ZOOM_MAX = 40;
+var _lwBarSpacing = (function(){
+  try { var v = parseFloat(localStorage.getItem('tx_bar_spacing')); if(v >= _LW_ZOOM_MIN && v <= _LW_ZOOM_MAX) return v; } catch(e){}
+  return (window.innerWidth < 700) ? 7 : 9;   // mobilde biraz daha dar
+})();
+
+function _lwApplyZoom(scrollToEnd){
+  if(!_lw) return;
+  try {
+    _lw.timeScale().applyOptions({ barSpacing: _lwBarSpacing, minBarSpacing: 1 });
+    if(scrollToEnd !== false && !_lwUserScrolled) _lw.timeScale().scrollToRealTime();
+  } catch(e){}
+  var lbl = document.getElementById('lwZoomLbl');
+  if(lbl) lbl.textContent = Math.round(_lwBarSpacing);
+}
+
+function lwZoom(dir){
+  // çarpanla ilerle: her tıklama oransal olarak aynı hissi verir
+  var next = dir > 0 ? _lwBarSpacing * 1.3 : _lwBarSpacing / 1.3;
+  _lwBarSpacing = Math.max(_LW_ZOOM_MIN, Math.min(_LW_ZOOM_MAX, next));
+  try { localStorage.setItem('tx_bar_spacing', String(_lwBarSpacing)); } catch(e){}
+  _lwUserScrolled = false;      // yakınlaştırma sonrası son mumlara dön
+  _lwApplyZoom();
+}
+
+function lwZoomReset(){
+  _lwBarSpacing = (window.innerWidth < 700) ? 7 : 9;
+  try { localStorage.setItem('tx_bar_spacing', String(_lwBarSpacing)); } catch(e){}
+  _lwUserScrolled = false;
+  _lwApplyZoom();
 }
 
 /* ── Canlı tick güncelleme (her saniye) ────────── */
@@ -4544,7 +4619,7 @@ function renderPositions() {
       <td onclick="txEditField(${pos.id},'tp')" title="Düzenlemek için tıkla" style="font-size:10px;color:var(--buy);cursor:pointer">${pos.tp ? '$'+fp(pos.tp,pos.decimals||2) : '<span style="color:var(--faint2);border-bottom:1px dashed var(--faint2)">—</span>'}</td>
       <td style="font-size:10px;color:${swapAcc<0?'#ef5350':swapAcc>0?'#2979ff':'var(--muted)'}">${swapAcc!==0?(swapAcc>0?'+':'')+swapAcc.toFixed(2):'—'}</td>
       <td data-pnl="${pos.id}" style="font-weight:700;color:${pnlColor};text-align:right">${pnlSign}$${fp(Math.abs(pnl))}</td>
-      <td><button class="close-ord" onclick="txPartialClose(${pos.id})" title="Parçalı kapat" style="margin-right:4px">◐</button><button class="close-ord" onclick="closePosition(${pos.id})">Kapat</button></td>
+      <td><button class="close-ord" onclick="txPartialClose(${pos.id})" title="Parçalı kapat" style="margin-right:4px">${_txUi('half',12)}</button><button class="close-ord" onclick="closePosition(${pos.id})">Kapat</button></td>
     </tr>`;
   }).join('');
 }
@@ -4717,7 +4792,7 @@ function txPartialClose(id){
   var maxQ = parseFloat(pos.qty)||0;
   txPrompt({
     title:'Parçalı Kapat',
-    icon:'◐',
+    icon:_txUi('half',15),
     sub:'Pozisyon <b>#'+id+'</b> — '+(pos.label||pos.sym)+'<br>Toplam <b>'+maxQ+'</b> lot açık',
     label:'Kapatılacak lot',
     placeholder:'Maks. '+maxQ,
@@ -5660,6 +5735,8 @@ function _txUi(name, size, color) {
     candle:  '<path d="M7 4v3M7 17v3M17 3v4M17 16v5"/><rect x="4.5" y="7" width="5" height="10" rx="1"/><rect x="14.5" y="7" width="5" height="9" rx="1"/>',
     updown:  '<path d="M7 20V5M7 5L4 8M7 5l3 3M17 4v15M17 19l-3-3M17 19l3-3"/>',
     close:   '<path d="M6 6l12 12M18 6L6 18"/>',
+    check:   '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    half:    '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none" opacity=".55"/>',
     target:  '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/>',
     stop:    '<circle cx="12" cy="12" r="8"/><path d="M9 12h6"/>',
     mail:    '<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M3.5 7l8.5 6 8.5-6"/>',
@@ -5685,7 +5762,7 @@ function _txUi(name, size, color) {
 // _ui-* sınıflı yer tutucuları SVG ile doldur (DOM hazır olduğunda)
 function _txFillUiIcons(root){
   var map={'_ui-demo':'play','_ui-key':'key','_ui-idcard':'idcard','_ui-eye':'eye',
-           '_ui-updown':'updown','_ui-gear':'gear','_ui-candle':'candle','_ui-close':'close','_ui-mail':'mail','_ui-home':'home','_ui-selfie':'selfie'};
+           '_ui-updown':'updown','_ui-gear':'gear','_ui-candle':'candle','_ui-close':'close','_ui-check':'check','_ui-half':'half','_ui-mail':'mail','_ui-home':'home','_ui-selfie':'selfie'};
   Object.keys(map).forEach(function(cls){
     (root||document).querySelectorAll('.'+cls).forEach(function(el){
       if(el.querySelector('svg')) return;
@@ -6139,7 +6216,7 @@ function renderDepositMethods() {
   const grid = document.getElementById('depositMethodGrid');
   grid.innerHTML = active.map(m => `
     <div class="wallet-method" id="dm-${m.id}" onclick="selectDepositMethod('${m.id}')">
-      <div class="wallet-method-icon" style="display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:10px;background:rgba(240,185,11,.08);color:var(--accent);margin:0 auto 8px">${_walletMethodIcon(m)}</div>
+      <div class="wallet-method-icon" style="display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:10px;background:var(--panel);border:1px solid var(--border2);color:var(--text);margin:0 auto 8px">${_walletMethodIcon(m)}</div>
       <div class="wallet-method-name">${m.name}</div>
       <div class="wallet-method-sub">${m.type==='bank'?m.currency+' · Min '+m.currency+' '+(m.min||0):m.network+' · Min '+m.min+' '+m.currency}</div>
     </div>
@@ -6249,7 +6326,7 @@ function renderWithdrawMethods() {
   const grid = document.getElementById('withdrawMethodGrid');
   grid.innerHTML = active.map(m => `
     <div class="wallet-method" id="wm-${m.id}" onclick="selectWithdrawMethod('${m.id}')">
-      <div class="wallet-method-icon" style="display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:10px;background:rgba(240,185,11,.08);color:var(--accent);margin:0 auto 8px">${_walletMethodIcon(m)}</div>
+      <div class="wallet-method-icon" style="display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:10px;background:var(--panel);border:1px solid var(--border2);color:var(--text);margin:0 auto 8px">${_walletMethodIcon(m)}</div>
       <div class="wallet-method-name">${m.name}</div>
       <div class="wallet-method-sub">${m.type==='bank'?m.currency:m.network+' · '+m.currency}</div>
     </div>
@@ -10242,7 +10319,7 @@ function symUnpin(sym){
 </script>
 
 <!-- MOBİL POZİSYON DETAY MODAL -->
-<div id="mPosModal" style="display:none;position:fixed;inset:0;z-index:9800;background:rgba(0,0,0,.7);align-items:flex-end;justify-content:center" onclick="if(event.target===this)mPosModalClose()">
+<div id="mPosModal" style="display:none;position:fixed;inset:0;z-index:9800;background:rgba(0,0,0,.55); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);align-items:flex-end;justify-content:center" onclick="if(event.target===this)mPosModalClose()">
   <div style="width:100%;background:var(--panel2);border-radius:12px 12px 0 0;border-top:1px solid var(--panel2);max-height:65vh;display:flex;flex-direction:column;margin-bottom:62px">
     <!-- Header kompakt -->
     <div style="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--panel);flex-shrink:0">
@@ -10304,8 +10381,14 @@ function symUnpin(sym){
           <input id="mPMTPInput" type="number" placeholder="—" step="any" inputmode="decimal"
             style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--buy);font-family:var(--mono);font-size:12px;padding:7px 8px;outline:none;box-sizing:border-box">
         </div>
-        <button onclick="mPosUpdate()" style="padding:8px 4px;background:#1a1400;border:1px solid var(--accent);border-radius:5px;color:var(--accent);font-family:var(--mono);font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation;white-space:nowrap">
-          ✓ <span data-lang="update">Güncelle</span>
+        <!-- ⚠️ 2026-09-22 BUTON HİYERARŞİSİ
+             Üç eylem de aynı ağırlıktaydı (renkli çerçeve + tint + renkli yazı),
+             hangisinin ana eylem olduğu anlaşılmıyordu. Artık:
+               Güncelle      = BİRİNCİL, dolu sarı (güvenli ve en sık yapılan)
+               Parçalı Kapat = ikincil, nötr yüzey
+               Pozisyonu Kapat = yıkıcı, kırmızı ve en belirgin çerçeve -->
+        <button onclick="mPosUpdate()" style="display:flex;align-items:center;justify-content:center;gap:5px;padding:9px 10px;background:var(--accent);border:1px solid var(--accent);border-radius:8px;color:#141414;font-family:var(--sans);font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation;white-space:nowrap">
+          <span class="_ui-check"></span><span data-lang="update">Güncelle</span>
         </button>
       </div>
     </div>
@@ -10313,15 +10396,15 @@ function symUnpin(sym){
     <div style="padding:8px;flex-shrink:0;border-top:1px solid var(--panel)">
       <div id="mPMPartialRow" style="display:flex;gap:6px;margin-bottom:6px">
         <input id="mPMPartialQty" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Lot (örn 0.03)"
-          style="flex:1;padding:10px;background:#0d0d0d;border:1px solid var(--border);border-radius:8px;color:#e8e8e8;font-family:var(--mono);font-size:13px">
+          style="flex:1;padding:10px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:13px">
         <button onclick="mPosPartial()"
-          style="padding:10px 14px;background:rgba(240,185,11,.1);border:1px solid rgba(240,185,11,.35);border-radius:8px;color:var(--accent);font-family:var(--mono);font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation;white-space:nowrap">
-          ◐ <span data-lang="partialClose">Parçalı Kapat</span>
+          style="display:flex;align-items:center;justify-content:center;gap:5px;padding:10px 14px;background:var(--panel2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--sans);font-size:12px;font-weight:600;cursor:pointer;touch-action:manipulation;white-space:nowrap">
+          <span class="_ui-half"></span><span data-lang="partialClose">Parçalı Kapat</span>
         </button>
       </div>
       <button onclick="mPosClose()" id="mPMCloseBtn"
-        style="width:100%;padding:11px;background:rgba(239,83,80,.1);border:1px solid rgba(239,83,80,.3);border-radius:8px;color:var(--sell);font-family:var(--mono);font-size:13px;font-weight:700;cursor:pointer;touch-action:manipulation">
-        ✕ <span data-lang="closePos">Pozisyonu Kapat</span>
+        style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px;padding:12px;background:rgba(239,83,80,.14);border:1.5px solid rgba(239,83,80,.55);border-radius:8px;color:var(--sell);font-family:var(--sans);font-size:13px;font-weight:700;cursor:pointer;touch-action:manipulation">
+        <span class="_ui-close"></span><span data-lang="closePos">Pozisyonu Kapat</span>
       </button>
     </div>
   </div>
@@ -10673,6 +10756,73 @@ function txPrompt(opts){
     setTimeout(function(){ inp.focus(); inp.select(); }, 30);
   });
 }
+</script>
+
+<script>
+/* ⚠️ 2026-09-19 — UYGULAMA OLARAK KURULUM
+   manifest.json dosyaya bağlıydı ama sunucuda YOKTU ve servis çalışanı hiç
+   kaydedilmiyordu. Chrome bir servis çalışanı görmeden "uygulamayı yükle"
+   teklifi sunmadığı için terminal telefonda adres çubuklu bir sayfa olarak
+   açılıyordu — müşterilerin "web sitesi gibi" demesinin sebebi buydu.
+   Aşağısı kurulumu mümkün kılar; uygulamanın çalışmasına hiç karışmaz. */
+(function(){
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('/sw.js').catch(function(e){
+        console.warn('[pwa] servis çalışanı kaydedilemedi:', e && e.message);
+      });
+    });
+  }
+
+  // Android/Chrome: kurulum teklifini yakala, kendi butonumuzda sun
+  var _deferred = null;
+  window.addEventListener('beforeinstallprompt', function(e){
+    e.preventDefault(); _deferred = e; showInstallBar();
+  });
+  window.addEventListener('appinstalled', function(){ hideInstallBar(); _deferred=null; });
+
+  function dismissed(){ try{ return localStorage.getItem('tx_pwa_dismiss')==='1'; }catch(e){ return false; } }
+  function dismiss(){ try{ localStorage.setItem('tx_pwa_dismiss','1'); }catch(e){} hideInstallBar(); }
+  function standalone(){
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  }
+  function hideInstallBar(){ var b=document.getElementById('txInstallBar'); if(b) b.remove(); }
+
+  function showInstallBar(text, how){
+    if (standalone() || dismissed() || document.getElementById('txInstallBar')) return;
+    var bar = document.createElement('div');
+    bar.id = 'txInstallBar';
+    bar.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));'
+      + 'z-index:99998;display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;'
+      + 'background:var(--panel,#1e1e1e);border:1px solid var(--border2,#3a3a3a);'
+      + 'box-shadow:0 8px 28px rgba(0,0,0,.45);font-family:var(--sans),system-ui,sans-serif;';
+    bar.innerHTML =
+      '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:13px;font-weight:600;color:var(--text,#edf0f4)">Uygulamayı ana ekrana ekle</div>'
+      + '<div style="font-size:11px;color:var(--muted,#aeb6c0);margin-top:2px">'+(text||'Tam ekran, daha hızlı erişim')+'</div>'
+      + '</div>'
+      + (how ? '' : '<button id="txInstallGo" style="flex-shrink:0;padding:8px 14px;border-radius:8px;border:none;'
+        + 'background:var(--accent,#f0b90b);color:#141414;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">Yükle</button>')
+      + '<button id="txInstallNo" aria-label="Kapat" style="flex-shrink:0;width:30px;height:30px;border-radius:8px;'
+      + 'border:none;background:transparent;color:var(--muted,#aeb6c0);font-size:16px;cursor:pointer">×</button>';
+    document.body.appendChild(bar);
+    var go=document.getElementById('txInstallGo');
+    if(go) go.onclick=function(){
+      if(!_deferred) return;
+      _deferred.prompt();
+      _deferred.userChoice.finally(function(){ _deferred=null; hideInstallBar(); });
+    };
+    document.getElementById('txInstallNo').onclick=dismiss;
+  }
+
+  // iOS: beforeinstallprompt YOK. Kullanıcıya nasıl ekleneceğini anlat.
+  window.addEventListener('load', function(){
+    var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (isIOS && !standalone()) {
+      setTimeout(function(){ showInstallBar('Paylaş düğmesi → "Ana Ekrana Ekle"', true); }, 2500);
+    }
+  });
+})();
 </script>
 </body>
 </html>

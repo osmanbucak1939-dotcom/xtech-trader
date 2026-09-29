@@ -2084,6 +2084,7 @@ function _txClearPasswordChangedSession() {
 </head>
 <body>
 
+<div id="txDemoBar" role="status" aria-live="polite"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17.5v.5"/></svg><span><b>TEST ORTAMI</b> · Gerçek hesap değildir</span></div>
 <div id="appWrap">
 <!-- TOP BAR -->
 <div class="topbar">
@@ -8732,7 +8733,7 @@ function symUnpin(sym){
   /* ── Ortak panel stili ── */
   .m-pan {
     position: fixed;
-    top: 44px; left: 0; right: 0; bottom: 62px;
+    top: calc(44px + var(--demo-h, 0px)); left: 0; right: 0; bottom: 62px;
     background: var(--bg);
     z-index: 7000;
     flex-direction: column;
@@ -9088,6 +9089,32 @@ function symUnpin(sym){
     a:focus-visible, button:focus-visible, select:focus-visible,
     input:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
       outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px;
+    }
+
+  
+    /* ══════════════════════════════════════════════════════════════
+       TEST ORTAMI ŞERİDİ — YALNIZ XTECH (2026-09-29)
+       Demo platformu olduğu için her ekranda görünür bir uyarı.
+       Sabit konumda; uygulama gövdesi (#appWrap) ve mobil paneller
+       (.m-pan) --demo-h kadar aşağı kaydırılıyor ki hiçbir şeyin
+       üstüne binmesin. Modal/perde katmanlarının ALTINDA kalır.
+       ══════════════════════════════════════════════════════════════ */
+    :root { --demo-h: 26px; }
+    #appWrap { padding-top: var(--demo-h); box-sizing: border-box; }
+    #txDemoBar {
+      position: fixed; left: 0; right: 0; top: var(--safe-top, 0px);
+      height: var(--demo-h); z-index: 7500;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      background: repeating-linear-gradient(135deg, #3a2e00 0 12px, #332800 12px 24px);
+      border-bottom: 1px solid rgba(240,185,11,.45);
+      color: #f5c518; font-family: var(--sans); font-size: 12px; font-weight: 600;
+      letter-spacing: .02em; white-space: nowrap; overflow: hidden;
+      user-select: none; pointer-events: none;
+    }
+    #txDemoBar b { font-weight: 800; letter-spacing: .06em; }
+    html[data-theme="light"] #txDemoBar {
+      background: repeating-linear-gradient(135deg, #fff4cc 0 12px, #ffefb8 12px 24px);
+      color: #7a5a00; border-bottom-color: rgba(154,107,16,.4);
     }
 
   </style>

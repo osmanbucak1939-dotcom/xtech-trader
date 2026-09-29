@@ -526,11 +526,17 @@ body { background:var(--bg); color:var(--text); font-family:var(--sans); font-si
 .ind-popup-input { background:var(--bg); border:1px solid var(--border2); border-radius:6px; padding:3px 7px; color:var(--text); font-family:var(--mono); font-size:12px; outline:none; width:70px; text-align:right; }
 .ind-popup-input:focus { border-color:var(--accent); }
 
-@media(max-width:768px) {
+/* ⚠️ 2026-09-26 YATAY MOD DÜZELTMESİ
+   Mobil/masaüstü ayrımı yalnızca GENİŞLİĞE bakıyordu (768px). Telefon yatay
+   çevrilince genişlik 844-932px'e çıkıyor ve uygulama kendini masaüstü sanıp
+   mobil düzeni bırakıyordu. Ölçüt artık "dar ekran VEYA dokunmatik cihazda
+   kısa yükseklik" — yatay telefonun yüksekliği ~390-430px olduğu için mobil
+   düzende kalır; gerçek masaüstü (pointer:fine) etkilenmez. */
+@media (max-width:768px), (pointer:coarse) and (max-height:520px) {
   .ind-toolbar { height:32px; }
   .ind-btn { padding:0 8px; font-size:11px; }
 }
-@media(min-width:769px) {
+@media (min-width:769px) and (pointer:fine) {
   #mReadOnlyBand { display: none !important; }
 }
 
@@ -2504,7 +2510,7 @@ function _txClearPasswordChangedSession() {
   
   <!-- Tabs -->
   <div style="padding:24px 28px 0">
-    <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--accent);letter-spacing:3px;text-align:center;margin-bottom:4px"><svg style="width:100%;max-width:260px;height:auto;display:inline-block;vertical-align:middle" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 64"> <g transform="translate(4,12)"> <line x1="20" y1="3" x2="20" y2="37" stroke="#D4A64C" stroke-width="1.6" stroke-linecap="round" transform="rotate(45 20 20)"/> <rect x="17" y="6" width="6" height="28" rx="2" fill="#D4A64C" transform="rotate(45 20 20)"/> <line x1="20" y1="3" x2="20" y2="37" stroke="#3FA372" stroke-width="1.6" stroke-linecap="round" transform="rotate(-45 20 20)"/> <rect x="17" y="6" width="6" height="28" rx="2" fill="#3FA372" transform="rotate(-45 20 20)"/> </g> <text x="60" y="42" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="30" letter-spacing="-0.5" fill="#E9ECF2">XTechTerminal</text> </svg></div>
+    <div style="text-align:center;margin-bottom:4px"><svg style="width:100%;max-width:260px;height:auto;display:inline-block;vertical-align:middle" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 64"> <g transform="translate(4,12)"> <line x1="20" y1="3" x2="20" y2="37" stroke="#D4A64C" stroke-width="1.6" stroke-linecap="round" transform="rotate(45 20 20)"/> <rect x="17" y="6" width="6" height="28" rx="2" fill="#D4A64C" transform="rotate(45 20 20)"/> <line x1="20" y1="3" x2="20" y2="37" stroke="#3FA372" stroke-width="1.6" stroke-linecap="round" transform="rotate(-45 20 20)"/> <rect x="17" y="6" width="6" height="28" rx="2" fill="#3FA372" transform="rotate(-45 20 20)"/> </g> <text x="60" y="42" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="30" letter-spacing="-0.5" fill="#E9ECF2">XTechTerminal</text> </svg></div>
     <div style="font-family:var(--mono);font-size:11px;color:var(--text);text-align:center;letter-spacing:2px;margin-bottom:20px">PROFESSIONAL TRADING TERMINAL</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border)">
       <div id="tab-login" onclick="_authShow('login')" style="padding:10px;text-align:center;font-family:var(--sans);font-size:12px;font-weight:700;color:var(--accent);border-bottom:2px solid var(--accent);cursor:pointer" data-lang="loginTab">GİRİŞ YAP</div>
@@ -6161,6 +6167,19 @@ function fbLoadRequests(callback) {
     .catch(function(e){ console.warn('fbLoadRequests:', e); callback && callback(); });
 }
 
+
+// ══════════════════════════════════════════════════════════════
+// MOBİL Mİ? — GLOBAL (2026-09-26)
+// ⚠️ Bu fonksiyon önce mobil panel kodunun KAPALI bloğu (IIFE) içine
+// konmuştu. openWallet gibi o bloğun dışındaki fonksiyonlar onu göremedi,
+// "_txIsMobile is not defined" hatası verdi ve PARA YATIR / ÇEK pencereleri
+// hiç açılmadı. Birden çok yerden çağrıldığı için global tanımlı olmalı.
+// ══════════════════════════════════════════════════════════════
+function _txIsMobile(){
+  try { return window.matchMedia('(max-width:768px), (pointer:coarse) and (max-height:520px)').matches; }
+  catch(e){ return window.innerWidth <= 768; }
+}
+
 function openWallet(tab) {
   if(window._readOnly){ var _ro3=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null); showToast(_ro3?_ro3.readOnlyTitle:'İzleyici Modu', _ro3?_ro3.readOnlyNoFinance:'Bu modda para işlemi yapamazsınız.'); return; }
   tab = tab || 'deposit';
@@ -6169,7 +6188,7 @@ function openWallet(tab) {
     var ov = document.getElementById('walletOverlay');
     var panel = ov.querySelector('.wallet-panel');
     // Mobilde JS ile style uygula
-    if(window.innerWidth <= 768) {
+    if(_txIsMobile()) {
       ov.style.alignItems = 'flex-end';
       ov.style.padding = '0';
       panel.style.width = '100vw';
@@ -8516,7 +8535,7 @@ function symUnpin(sym){
 .m-pan               { display: none; }
 .m-pan.on            { display: flex !important; }
 
-@media (max-width: 768px) {
+@media (max-width:768px), (pointer:coarse) and (max-height:520px) {
   /* Mobilde workspace - grafik sekmesinde tam ekran */
   body.chart-active .workspace { display: flex !important; }
   body.chart-active .chart-area { padding-bottom: 52px !important; }
@@ -9430,7 +9449,8 @@ function symUnpin(sym){
 <script>
 (function(){
   var _ct='market', _lot=0.01, _ptab='open';
-  function mob(){ return window.innerWidth<=768; }
+  
+function mob(){ return _txIsMobile(); }
 
   // ── TEMA (Açık/Koyu Mod) ──
   var _svgSun = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2.2M12 19.3v2.2M4.2 4.2l1.55 1.55M18.25 18.25l1.55 1.55M2.5 12h2.2M19.3 12h2.2M4.2 19.8l1.55-1.55M18.25 5.75l1.55-1.55"></path></svg>';
@@ -9465,7 +9485,7 @@ function symUnpin(sym){
 
   // Nav + panelleri sadece mobilde göster
   function mShow(){
-    if(window.innerWidth > 768){ mHideAll(); }
+    if(!_txIsMobile()){ mHideAll(); }
   }
   function mHideAll(){
     ['mPanMarket','mPanTrade','mPanPos','mPanAcc'].forEach(function(id){
@@ -10938,6 +10958,71 @@ function txPrompt(opts){
     if (isIOS && !standalone()) {
       setTimeout(function(){ showInstallBar('Paylaş düğmesi → "Ana Ekrana Ekle"', true); }, 2500);
     }
+  });
+})();
+</script>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════
+   YÖN KİLİDİ (2026-09-26)
+   ──────────────────────────────────────────────────────────────────────
+   Amaç: uygulama hissi — telefon yan çevrilince arayüz savrulmasın.
+   AMA yatay mod GRAFİK için gerçekten faydalı. Bu yüzden kilit seçici:
+     • Grafik sekmesi açıkken (body.chart-active) yatay SERBEST.
+     • Diğer ekranlarda yatay çevrilirse "dik tutun" perdesi çıkar.
+   Teknik sınır: tarayıcı sekmesinde yön KİLİTLENEMEZ; screen.orientation.lock
+   yalnız kurulu/tam ekran modda ve çoğunlukla Android'de çalışır. iOS hiç
+   desteklemez. Bu yüzden perde bir YEDEK, tek başına da yeterli çalışır.
+   ══════════════════════════════════════════════════════════════════════ */
+(function(){
+  function standalone(){
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  }
+  // Kurulu uygulamada gerçek kilidi dene (destekleyen cihazlarda perde hiç çıkmaz)
+  function tryLock(){
+    if(!standalone() || !screen.orientation || !screen.orientation.lock) return;
+    screen.orientation.lock('portrait').catch(function(){ /* desteklemiyorsa perdeye düşeriz */ });
+  }
+  document.addEventListener('DOMContentLoaded', tryLock);
+
+  function isPhone(){
+    try { return window.matchMedia('(pointer:coarse)').matches && Math.min(screen.width, screen.height) <= 520; }
+    catch(e){ return false; }
+  }
+
+  function bar(){
+    var el = document.getElementById('txRotate');
+    if(el) return el;
+    el = document.createElement('div');
+    el.id = 'txRotate';
+    el.style.cssText = 'position:fixed;inset:0;z-index:99999;display:none;flex-direction:column;'
+      + 'align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;'
+      + 'background:var(--bg,#101317);color:var(--text,#edf0f4);font-family:var(--sans),system-ui,sans-serif;';
+    el.innerHTML =
+      '<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#f0b90b)" '
+      + 'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>'
+      + '<path d="M3 9a9 9 0 0 1 2.6-4M3 9l3 .6M3 9l.7-3"/></svg>'
+      + '<div style="font-size:15px;font-weight:600">Telefonunuzu dik tutun</div>'
+      + '<div style="font-size:12px;color:var(--muted,#aeb6c0);max-width:260px;line-height:1.5">'
+      + 'Yatay görünüm yalnızca grafik ekranında kullanılır.</div>';
+    document.body.appendChild(el);
+    return el;
+  }
+
+  function check(){
+    if(!isPhone()) return;
+    var landscape = window.innerWidth > window.innerHeight;
+    var chart = document.body.classList.contains('chart-active');
+    bar().style.display = (landscape && !chart) ? 'flex' : 'none';
+  }
+  window.addEventListener('resize', check);
+  window.addEventListener('orientationchange', function(){ setTimeout(check, 120); });
+  document.addEventListener('DOMContentLoaded', check);
+  // Sekme değişince de bak (grafiğe geçince perde kalkmalı)
+  var _mo = new MutationObserver(check);
+  document.addEventListener('DOMContentLoaded', function(){
+    _mo.observe(document.body, {attributes:true, attributeFilter:['class']});
   });
 })();
 </script>

@@ -5343,6 +5343,20 @@ function showToast(t, m, type) {
   tTmr = setTimeout(()=>el.classList.remove('show'), 4000);
 }
 
+// ⚠️ 2026-10-09: tarayıcıda saklanan son fiyatlar. Eski anahtar ('tx_lastp') bazı
+// cihazlarda 1.00 gibi bozuk değerler tutuyordu (filtre öncesi dönemden kalma) →
+// o cihazda/hesapta WTI-Brent 1 görünüyordu. Anahtar değişti: eski önbellek atılır.
+var TX_LASTP_KEY = 'tx_lastp2';
+try{ localStorage.removeItem('tx_lastp'); }catch(e){}
+// Katalog referans fiyatı ile kıyas: saklı/ilk fiyat bundan ~6 kattan fazla saparsa güvenilmez.
+function _txPlausible(sym, v){
+  if(!(v>0)) return false;
+  if(/USDT$/.test(sym)) return true;   // kripto Binance'ten, katalog fiyatı çok eskiyebilir
+  var r = window._txRefP && window._txRefP[sym];
+  if(!(r>0)) return true;
+  var k = v / r;
+  return k > 0.15 && k < 6;            // geniş bant: yalnızca 1.00 gibi absürt değerleri yakalar
+}
 var SIM_PRICES = {
   // Kripto
   'BTCUSDT': {p:98450, v:0.0008, d:2}, 'ETHUSDT': {p:3520,  v:0.0010, d:2},
@@ -5501,8 +5515,12 @@ function startFirebaseSnapshots() {
 
 
 function startLiveFeed() {
+  // Katalog referans fiyatları (yalnızca ilk çağrıda, üzerine yazılmadan önce)
+  if(!window._txRefP){ window._txRefP = {}; Object.keys(SIM_PRICES).forEach(function(k){ if(SIM_PRICES[k].p>1) window._txRefP[k] = SIM_PRICES[k].p; }); }
   // Önceki oturumun SON GERÇEK fiyatları (localStorage) — açılışta "1"/eski seed görünmesin.
-  var _saved = {}; try{ _saved = JSON.parse(localStorage.getItem('tx_lastp')||'{}'); }catch(e){}
+  var _saved = {}; try{ _saved = JSON.parse(localStorage.getItem(TX_LASTP_KEY)||'{}'); }catch(e){}
+  // Mantıksız saklı değerleri at (ör. WTI 1.00)
+  Object.keys(_saved).forEach(function(k){ if(!_txPlausible(k, _saved[k])) delete _saved[k]; });
   // Simüle fiyatları yükle (UI hemen gösterilsin)
   var keys = Object.keys(SIM_PRICES);
   for(var i=0; i<keys.length; i++) {
@@ -5510,7 +5528,7 @@ function startLiveFeed() {
     var p0 = (_saved[sym]>0) ? _saved[sym] : cfg.p;
     if(_saved[sym]>0) cfg.p = _saved[sym];
     mwPrices[sym] = {price:p0, prev:p0, chg:0};
-    prices[sym]   = {price:p0, chg:0, bid:p0, ask:p0, _seed: !(_saved[sym]>0)};
+    prices[sym]   = {price:p0, chg:0, bid:p0, ask:p0, _seed: true};  // saklı da olsa yer tutucu: ilk gerçek tick her zaman kabul
   }
   applySymConfig();
   renderMarketWatch();
@@ -6046,7 +6064,7 @@ function applySymConfig() {
     }
     // SIM_PRICES ve prices'a da ekle
     if(!SIM_PRICES[s.sym]) {
-      var _sv = 0; try{ var _o = window._txPersist || JSON.parse(localStorage.getItem('tx_lastp')||'{}'); _sv = _o[s.sym]||0; }catch(e){}
+      var _sv = 0; try{ var _o = window._txPersist || JSON.parse(localStorage.getItem(TX_LASTP_KEY)||'{}'); _sv = _o[s.sym]||0; if(!_txPlausible(s.sym,_sv)) _sv = 0; }catch(e){}
       // ⚠️ 2026-09-19: kayıtlı fiyat yoksa buraya 1 yazılıyordu. Tarayıcı hafızası
       // dolu olan cihazda fark edilmiyor ama YENİ bir cihazda ilk açılışta tüm
       // semboller 1.00 görünüyordu. Katalogdaki temsilî fiyatı tercih et.
@@ -6631,7 +6649,7 @@ function _txJitterTick(){
     var b = base[sym];
     if(!(b>0)){
       // Taban henüz yok (yeni eklenen sembol / köprü dışı kaynak) → mevcut gerçek fiyattan başlat.
-      if(typeof prices!=='undefined' && prices[sym] && prices[sym].price>0){ b = prices[sym].price; base[sym] = b; }
+      if(typeof prices!=='undefined' && prices[sym] && prices[sym].price>0 && !prices[sym]._seed){ b = prices[sym].price; base[sym] = b; }
       else continue;   // fiyatı hiç yoksa kıpırdatma
     }
     // Override aktifse: titreme override etrafında kıpırdasın (gerçek fiyata zıplamasın).
@@ -7338,6 +7356,11 @@ function txApplyPrice(sym, rawMid, _synthetic) {
   // ⚠️ 2026-09-19: _seed (yer tutucu) fiyata göre kıyas YAPMA. Yeni cihazda
   // semboller 1.00 ile tohumlandığı için ilk gerçek tick %8000 sapma gibi
   // görünüyor ve filtre onu reddediyordu — fiyat 1.00'da takılı kalıyordu.
+  // ⚠️ 2026-10-09: referansa göre absürt değer (ör. 84'lük WTI için 1.00) hiç kabul edilmez.
+  if(!_synthetic && prices[sym] && prices[sym]._seed && !_txPlausible(sym, rawMid)) {
+    console.warn('[fiyat] '+sym+' mantıksız ilk değer reddedildi: '+rawMid);
+    return;
+  }
   if(!_synthetic && prices[sym] && prices[sym].price > 0 && !prices[sym]._seed) {
     var _lastP = prices[sym].price;
     var _devPct = Math.abs(rawMid - _lastP) / _lastP * 100;
@@ -7346,10 +7369,12 @@ function txApplyPrice(sym, rawMid, _synthetic) {
       var _pd = window._txJumpPend[sym];
       if(_pd && Math.abs(rawMid - _pd.val)/_pd.val*100 <= TX_MAX_JUMP_PCT) {
         _pd.n++; _pd.val = rawMid;
-        if(_pd.n < TX_CONFIRM_TICKS) return;          // henüz doğrulanmadı
+        // 2026-10-09: yavaş akan sembolde (aynı fiyat tekrar gelmez) 3 tick hiç tamamlanmayabiliyordu →
+        // 20 sn boyunca tutarlı kalan yeni seviye de kabul edilir.
+        if(_pd.n < TX_CONFIRM_TICKS && (Date.now() - _pd.t) < 20000) return;   // henüz doğrulanmadı
         delete window._txJumpPend[sym];               // doğrulandı → kabul
       } else {
-        window._txJumpPend[sym] = {val:rawMid, n:1};
+        window._txJumpPend[sym] = {val:rawMid, n:1, t:Date.now()};
         console.warn('[fiyat] '+sym+' sıçraması reddedildi: '+_lastP+' → '+rawMid+' (%'+_devPct.toFixed(1)+')');
         return;
       }
@@ -7362,7 +7387,7 @@ function txApplyPrice(sym, rawMid, _synthetic) {
   // motorları da aynı seans motorunu kullandığı için kapalıyken stop-out
   // vermez; ikisi ayrışırsa müşteri donmuş fiyat görürken pozisyonu kapanır.
   // İlk fiyat henüz yoksa dondurma (ekranda "—" kalmasın diye) bir kez yazılır.
-  if(typeof _txSymOpen === 'function' && prices[sym] && prices[sym].price > 0 && !_txSymOpen(sym)) {
+  if(typeof _txSymOpen === 'function' && prices[sym] && prices[sym].price > 0 && !prices[sym]._seed && !_txSymOpen(sym)) {
     return;
   }
 
@@ -7411,12 +7436,12 @@ function txApplyPrice(sym, rawMid, _synthetic) {
   if(SIM_PRICES && SIM_PRICES[sym]) SIM_PRICES[sym].p = rawMid;
   // Son GERÇEK fiyatları kalıcı sakla (sayfa açılışında "1" görünmesin) — 5sn'de bir topluca yaz.
   if(!_synthetic){
-    if(!window._txPersist){ try{ window._txPersist = JSON.parse(localStorage.getItem('tx_lastp')||'{}'); }catch(e){ window._txPersist = {}; } }
-    window._txPersist[sym] = rawMid;
+    if(!window._txPersist){ try{ window._txPersist = JSON.parse(localStorage.getItem(TX_LASTP_KEY)||'{}'); }catch(e){ window._txPersist = {}; } }
+    if(_txPlausible(sym, rawMid)) window._txPersist[sym] = rawMid;
     var _nw = Date.now();
     if(!window._txLastSave || _nw - window._txLastSave > 5000){
       window._txLastSave = _nw;
-      try{ localStorage.setItem('tx_lastp', JSON.stringify(window._txPersist)); }catch(e){}
+      try{ localStorage.setItem(TX_LASTP_KEY, JSON.stringify(window._txPersist)); }catch(e){}
     }
   }
 
@@ -7629,7 +7654,7 @@ function _txDedStart(sym){
   var handler = function(snap){
     var price = parseFloat(snap.val());
     if(!price || price <= 0) return;
-    if(window._txLastFbPrice[listenSym] === price) return;
+    if(window._txLastFbPrice[listenSym] === price && !(window._txJumpPend && window._txJumpPend[listenSym])) return;
     window._txLastFbPrice[listenSym] = price;
     txApplyPrice(listenSym, price);
   };
@@ -7665,7 +7690,7 @@ function _txApplyBridgePrice(sym, price, chg){
     if(typeof prices!=='undefined' && prices[sym]) prices[sym].chg = parseFloat(chg);
     if(typeof mwPrices!=='undefined' && mwPrices[sym]) mwPrices[sym].chg = parseFloat(chg);
   }
-  if(window._txLastFbPrice[sym] === price) return;
+  if(window._txLastFbPrice[sym] === price && !(window._txJumpPend && window._txJumpPend[sym])) return;
   window._txLastFbPrice[sym] = price;
   if(!window._txLive) window._txLive = {};
   window._txLive[sym] = true;          // gerçek (canlı) tick geldi → kline seed üzerine yazmasın
@@ -10903,7 +10928,10 @@ function txPrompt(opts){
     var set=function(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; };
     set('txModalTitle', opts.title||'Düzenle');
     set('txModalLabel', opts.label||'Değer');
-    document.getElementById('txModalIcon').textContent = opts.icon||'';
+    var _mi=document.getElementById('txModalIcon'), _ic=String(opts.icon||'');
+    // SVG ikon gelirse HTML olarak bas (textContent ile kod metni görünüyordu); emoji/metin ise düz yaz
+    if(/^\s*<svg/i.test(_ic)) _mi.innerHTML=_ic; else _mi.textContent=_ic;
+    if(!_ic && typeof _txUi==='function') _mi.innerHTML=_txUi('pencil',15);
     var sub=document.getElementById('txModalSub');
     if(opts.sub){ sub.innerHTML=opts.sub; sub.style.display=''; } else { sub.style.display='none'; }
     var hint=document.getElementById('txModalHint');

@@ -597,6 +597,23 @@ body { background:var(--bg); color:var(--text); font-family:var(--sans); font-si
 .wallet-quick { background:var(--panel2); border:1px solid var(--border); border-radius:6px; padding:4px 10px; font-family:var(--sans); font-size:11px; color:var(--muted); cursor:pointer; transition:all .15s; }
 .wallet-quick:hover { border-color:var(--accent); color:var(--accent); }
 
+/* 2026-10-13 dekont yükleme */
+.dep-rcpt-lbl{font-family:var(--sans);font-size:11px;color:var(--muted);margin:2px 0 6px;letter-spacing:.5px}
+.dep-rcpt-box{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;padding:11px 12px;margin-bottom:6px;border:1px dashed var(--border2);border-radius:10px;background:var(--panel);color:var(--text);font-family:var(--sans);font-size:12px;cursor:pointer;transition:border-color .15s,background .15s}
+.dep-rcpt-box:hover{border-color:var(--accent,#2979ff)}
+.dep-rcpt-box.has{border-style:solid;border-color:rgba(38,166,154,.55);background:rgba(38,166,154,.07)}
+.dep-rcpt-box .dep-rcpt-ic{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--panel2);color:var(--muted);flex-shrink:0}
+.dep-rcpt-box .dep-rcpt-tx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dep-rcpt-box .dep-rcpt-x{color:var(--muted);padding:2px 6px;border-radius:6px}
+.dep-rcpt-hint{font-family:var(--sans);font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.5}
+.dep-pend{margin-bottom:14px;border:1px solid var(--border2);border-radius:10px;overflow:hidden}
+.dep-pend-h{font-family:var(--sans);font-size:11px;color:var(--muted);letter-spacing:.5px;padding:8px 12px;background:var(--panel2)}
+.dep-pend-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-top:1px solid var(--border2);font-family:var(--sans);font-size:12px;color:var(--text)}
+.dep-pend-row .dp-main{flex:1;min-width:0}
+.dep-pend-row .dp-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.dep-pend-btn{font-family:var(--sans);font-size:11px;font-weight:600;padding:6px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--panel);color:var(--text);cursor:pointer;white-space:nowrap}
+.dep-pend-btn.go{background:var(--accent,#2979ff);border-color:transparent;color:#fff}
+.dep-pend-ok{font-size:11px;font-weight:600;color:#26a69a;white-space:nowrap;display:flex;align-items:center;gap:4px}
 .wallet-note { font-family:var(--sans); font-size:11px; color:var(--muted); background:rgba(240,185,11,.06); border:1px solid rgba(240,185,11,.15); border-radius:6px; padding:8px 10px; margin-bottom:14px; line-height:1.6; }
 .wallet-submit { width:100%; padding:11px; border:none; border-radius:6px; font-family:var(--sans); font-size:12px; font-weight:700; cursor:pointer; transition:all .2s; letter-spacing:.5px; }
 .wallet-submit.deposit { background:var(--buy); color:#fff; }
@@ -2624,6 +2641,8 @@ function _txClearPasswordChangedSession() {
 
     <!-- PARA YATIR -->
     <div class="wallet-section active" id="ws-deposit">
+      <div id="depPendingWrap"></div>
+      <input type="file" id="depRcptLater" accept="image/*,application/pdf" style="display:none" onchange="_depRcptLaterPicked(this)">
       <div style="font-family:var(--sans);font-size:11px;color:var(--muted);margin-bottom:12px;letter-spacing:.5px" data-lang="selectDepositMethod">YATIRIM YÖNTEMİ SEÇİN</div>
       <div class="wallet-method-grid" id="depositMethodGrid">
         <!-- Dinamik olarak doldurulacak -->
@@ -2642,7 +2661,15 @@ function _txClearPasswordChangedSession() {
           <div class="wallet-quick" onclick="setDepositAmt(5000)">5.000</div>
         </div>
         <div class="wallet-note" id="depositNote"></div>
-        <button class="wallet-submit deposit" onclick="submitDeposit()" data-lang="submitDeposit">PARA YATIRMA TALEBİ GÖNDER</button>
+        <div class="dep-rcpt-lbl">DEKONT <span style="opacity:.7">(isteğe bağlı)</span></div>
+        <label class="dep-rcpt-box" id="depRcptBox" for="depRcptFile">
+          <span class="dep-rcpt-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg></span>
+          <span class="dep-rcpt-tx" id="depRcptName">Dekont seç — JPG, PNG veya PDF</span>
+          <span class="dep-rcpt-x" id="depRcptClear" style="display:none" onclick="event.preventDefault();_depRcptClear()">✕</span>
+        </label>
+        <input type="file" id="depRcptFile" accept="image/*,application/pdf" style="display:none" onchange="_depRcptPicked(this)">
+        <div class="dep-rcpt-hint">Ödemeyi henüz yapmadıysan boş bırak. Dekontu sonra bu sekmenin üstündeki listeden yükleyebilirsin.</div>
+        <button class="wallet-submit deposit" id="depSubmitBtn" onclick="submitDeposit()" data-lang="submitDeposit">PARA YATIRMA TALEBİ GÖNDER</button>
       </div>
     </div>
 
@@ -5489,6 +5516,7 @@ function startFirebaseSnapshots() {
       var _dReqs = _data.deposit  ? JSON.parse(_data.deposit)  : (_data.depositRequests  ? JSON.parse(_data.depositRequests)  : null);
       if(Array.isArray(_wReqs)) withdrawRequests = _wReqs;
       if(Array.isArray(_dReqs)) depositRequests  = _dReqs;
+      try{ if(typeof _depRenderPending==='function') _depRenderPending(); }catch(e){}
       var _reqEl = document.getElementById('bp-talepler-content');
       if(_reqEl && typeof _renderBpTaleplerTable==='function') _renderBpTaleplerTable(_reqEl);
     } catch(e){ console.warn('requests snap:', e); }
@@ -6233,6 +6261,7 @@ function openWallet(tab) {
       if(data) {
         if(data.balance !== undefined) { balance = parseFloat(data.balance)||0; window._txBalLoaded=true; updateAccount(); }
         if(Array.isArray(data.finlog)) finlog = data.finlog;
+        if(data.receipts && typeof data.receipts==='object') window._txReceipts = data.receipts;
         if(Array.isArray(data.pendingOrders)) { pendingOrders = data.pendingOrders; localStorage.setItem('tx_pending', JSON.stringify(pendingOrders)); renderPendingOrders(); }
       }
       fbLoadRequests(doOpen);
@@ -6337,6 +6366,7 @@ function renderDepositMethods() {
   `).join('') || '<div style="color:var(--muted);font-family:var(--mono);font-size:12px">Ödeme yöntemi tanımlanmamış.<br>Manager > Ödeme Yön. kısmından ekleyin.</div>';
   var _st_depositDetails=document.getElementById('depositDetails'); if(_st_depositDetails) _st_depositDetails.style.display = 'none';
   selectedDepositMethod = null;
+  try{ _depRcptClear(); _depRenderPending(); }catch(e){}
 }
 
 function selectDepositMethod(id) {
@@ -6431,8 +6461,152 @@ function submitDeposit() {
   };
   depositRequests.unshift(req);
   saveRequests();
+  var _rf = window._depRcptFile || null;
+  var _cur0 = selectedDepositMethod.currency;
+  if(_rf){
+    var _btn = document.getElementById('depSubmitBtn');
+    if(_btn){ _btn.disabled = true; _btn.textContent = 'DEKONT YÜKLENİYOR…'; }
+    _txUploadReceipt(req, _rf, function(ok){
+      if(_btn){ _btn.disabled = false; _btn.textContent = 'PARA YATIRMA TALEBİ GÖNDER'; }
+      _depRcptClear();
+      closeWallet();
+      showToast('Bildirim Alındı ✓', amt+' '+_cur0+' yatırma bildirimi'+(ok?' ve dekont gönderildi':' gönderildi — dekont yüklenemedi, Para Yatır sekmesinden tekrar deneyin'));
+    });
+    return;
+  }
   closeWallet();
-  showToast('Bildirim Alındı ✓', `${amt} ${selectedDepositMethod.currency} yatırma bildirimi gönderildi`);
+  showToast('Bildirim Alındı ✓', `${amt} ${selectedDepositMethod.currency} yatırma bildirimi gönderildi — dekontu Para Yatır sekmesinden yükleyebilirsiniz`);
+}
+
+// ══════════════════════════════════════════════════════════════
+// DEKONT YÜKLEME (2026-10-13)
+// Dosya Firebase Storage'a yüklenir (KYC ile aynı klasör: kyc/{hesap}/ —
+// mevcut güvenlik kuralları zaten buna izin veriyor). Kayıt iki yere yazılır:
+//   users/{hesap}.receipts.{talepId}  → müşteri kendi listesinde durumu görür
+//   broker/receipts.{talepId}          → admin Talepler ekranında "Dekont" butonu
+// Storage çalışmazsa resim küçültülüp broker/rcpt_{talepId} belgesine yazılır.
+// ══════════════════════════════════════════════════════════════
+function _depRcptValid(file){
+  if(!file) return false;
+  var ok = (file.type||'').indexOf('image/')===0 || file.type==='application/pdf';
+  if(!ok){ showToast('Geçersiz dosya','Sadece resim (JPG/PNG) veya PDF yükleyebilirsiniz'); return false; }
+  if(file.size > 10*1024*1024){ showToast('Dosya çok büyük','Maksimum 10MB'); return false; }
+  return true;
+}
+function _depRcptPicked(inp){
+  var f = inp.files && inp.files[0]; inp.value = '';
+  if(!_depRcptValid(f)) return;
+  window._depRcptFile = f;
+  var n = document.getElementById('depRcptName'); if(n) n.textContent = f.name;
+  var b = document.getElementById('depRcptBox'); if(b) b.classList.add('has');
+  var x = document.getElementById('depRcptClear'); if(x) x.style.display = '';
+}
+function _depRcptClear(){
+  window._depRcptFile = null;
+  var n = document.getElementById('depRcptName'); if(n) n.textContent = 'Dekont seç — JPG, PNG veya PDF';
+  var b = document.getElementById('depRcptBox'); if(b) b.classList.remove('has');
+  var x = document.getElementById('depRcptClear'); if(x) x.style.display = 'none';
+}
+// Resmi küçült (en uzun kenar 1800px, JPEG) — yükleme hızlansın, yedek yolda 1MB sınırına sığsın
+function _depShrinkImage(file, cb){
+  if((file.type||'').indexOf('image/')!==0 || file.type==='image/gif'){ cb(file, null); return; }
+  var fr = new FileReader();
+  fr.onerror = function(){ cb(file, null); };
+  fr.onload = function(){
+    var img = new Image();
+    img.onerror = function(){ cb(file, null); };
+    img.onload = function(){
+      try{
+        var M = 1800, w = img.width, h = img.height, k = Math.min(1, M/Math.max(w,h));
+        var c = document.createElement('canvas'); c.width = Math.round(w*k); c.height = Math.round(h*k);
+        var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0,0,c.width,c.height); g.drawImage(img,0,0,c.width,c.height);
+        var q = 0.82, url = c.toDataURL('image/jpeg', q);
+        while(url.length > 900000 && q > 0.4){ q -= 0.12; url = c.toDataURL('image/jpeg', q); }
+        c.toBlob(function(blob){ cb(blob || file, url); }, 'image/jpeg', q);
+      }catch(e){ cb(file, null); }
+    };
+    img.src = fr.result;
+  };
+  fr.readAsDataURL(file);
+}
+function _txUploadReceipt(req, file, done){
+  done = done || function(){};
+  if(!_cu || !_cu.id || typeof db==='undefined' || !db){ showToast('Hata','Oturum bulunamadı'); done(false); return; }
+  var uid = String(_cu.id), rid = String(req.id);
+  var isPdf = file.type==='application/pdf';
+  _depShrinkImage(file, function(blob, dataUrl){
+    var meta = { reqId:rid, accountId:uid, accountName:req.accountName||'', amount:req.amount, currency:req.currency||'',
+                 name:file.name||'dekont', type:isPdf?'pdf':'image', at:new Date().toISOString() };
+    var _save = function(){
+      var up = {}; up[rid] = meta;
+      var p1 = db.collection('users').doc(uid).set({receipts: up}, {merge:true});
+      var p2 = db.collection('broker').doc('receipts').set(up, {merge:true}).catch(function(e){ console.warn('[dekont] broker/receipts:', e.message); });
+      Promise.all([p1, p2]).then(function(){
+        if(!window._txReceipts) window._txReceipts = {};
+        window._txReceipts[rid] = meta;
+        try{ _depRenderPending(); }catch(e){}
+        done(true);
+      }).catch(function(e){ console.warn('[dekont] kayıt:', e); showToast('Dekont kaydedilemedi', e.message||''); done(false); });
+    };
+    var _fallback = function(err){
+      console.warn('[dekont] Storage yüklemesi başarısız, yedek yol:', err && err.message);
+      var _put = function(d){
+        if(!d || d.length > 950000){ showToast('Yükleme başarısız', 'Dosya çok büyük ya da depolama kapalı. Daha küçük bir resim deneyin.'); done(false); return; }
+        db.collection('broker').doc('rcpt_'+rid).set({data:d, accountId:uid, name:meta.name, type:meta.type, at:meta.at})
+          .then(function(){ meta.docId = 'rcpt_'+rid; _save(); })
+          .catch(function(e){ showToast('Yükleme başarısız', e.message||''); done(false); });
+      };
+      if(dataUrl) _put(dataUrl);
+      else { var fr = new FileReader(); fr.onload = function(){ _put(fr.result); }; fr.onerror = function(){ _put(null); }; fr.readAsDataURL(file); }
+    };
+    if(typeof fbStorage==='undefined' || !fbStorage){ _fallback({message:'storage yok'}); return; }
+    try{
+      var ext = isPdf ? 'pdf' : 'jpg';
+      if(!isPdf && blob === file){ ext = ((file.name||'').split('.').pop()||'jpg').toLowerCase(); }
+      var ref = fbStorage.ref('kyc/' + uid + '/dekont_' + rid + '_' + Date.now() + '.' + ext);
+      var task = ref.put(blob, {contentType: isPdf ? 'application/pdf' : (blob.type || 'image/jpeg')});
+      task.then(function(snap){ return snap.ref.getDownloadURL(); })
+          .then(function(url){ meta.url = url; _save(); })
+          .catch(_fallback);
+    }catch(e){ _fallback(e); }
+  });
+}
+// Para Yatır sekmesinin üstünde: müşterinin bekleyen yatırımları + dekont durumu
+function _depRenderPending(){
+  var w = document.getElementById('depPendingWrap'); if(!w) return;
+  if(!_cu || !_cu.id || !Array.isArray(depositRequests)){ w.innerHTML=''; return; }
+  var rc = window._txReceipts || {};
+  var mine = depositRequests.filter(function(r){
+    return String(r.accountId)===String(_cu.id) && r.status==='pending' && r.source!=='manager';
+  }).slice(0, 5);
+  if(!mine.length){ w.innerHTML=''; return; }
+  var ok = (typeof _txUi==='function') ? _txUi('check',13) : '✓';
+  w.innerHTML = '<div class="dep-pend"><div class="dep-pend-h">BEKLEYEN YATIRIM TALEPLERİN</div>'
+    + mine.map(function(r){
+        var has = !!rc[r.id];
+        var id = String(r.id).replace(/[^A-Za-z0-9_-]/g,'');
+        return '<div class="dep-pend-row"><div class="dp-main"><b>'+parseFloat(r.amount||0).toLocaleString('tr-TR')+' '+(r.currency||'')+'</b>'
+          + '<div class="dp-sub">'+(r.method||'')+' · #'+id+'</div></div>'
+          + (has ? '<span class="dep-pend-ok">'+ok+' Dekont yüklendi</span>'
+                   + '<button class="dep-pend-btn" onclick="_depRcptLater(\''+id+'\')">Değiştir</button>'
+                 : '<button class="dep-pend-btn go" id="dpb-'+id+'" onclick="_depRcptLater(\''+id+'\')">Dekont Yükle</button>')
+          + '</div>';
+      }).join('') + '</div>';
+}
+function _depRcptLater(id){
+  var inp = document.getElementById('depRcptLater'); if(!inp) return;
+  inp.dataset.req = id; inp.value = ''; inp.click();
+}
+function _depRcptLaterPicked(inp){
+  var f = inp.files && inp.files[0]; var id = inp.dataset.req; inp.value = '';
+  if(!id || !_depRcptValid(f)) return;
+  var req = depositRequests.find(function(r){ return String(r.id)===String(id); });
+  if(!req){ showToast('Hata','Talep bulunamadı'); return; }
+  var b = document.getElementById('dpb-'+id); if(b){ b.disabled = true; b.textContent = 'Yükleniyor…'; }
+  _txUploadReceipt(req, f, function(ok){
+    if(ok) showToast('Dekont yüklendi ✓', '#'+id+' talebine eklendi');
+    else if(b){ b.disabled = false; b.textContent = 'Dekont Yükle'; }
+  });
 }
 
 function renderWithdrawMethods() {

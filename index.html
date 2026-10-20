@@ -1602,8 +1602,15 @@ function _doLogin() {
     tryLogin(fbAccs && fbAccs.length ? fbAccs : []);
   });
 }
+// ⚠️ 2026-10-20: Eskiden herkes ORTAK 'DEMO-001' hesabına giriyordu (aynı bakiye,
+// aynı pozisyonlar). Artık "Demo hesap" butonu kayıt formunu DEMO modunda açar;
+// her kişi kendi login numarasıyla ayrı bir demo hesap (10.000$) oluşturur.
 function _doDemo() {
-  _authSuccess({id:'DEMO-001',name:'Demo',surname:'Kullanıcı',email:'demo@tradex.com',type:'demo',balance:10000,active:true});
+  if(typeof _authShow==='function') _authShow('register');
+  if(typeof authAccType==='function') authAccType('demo');
+  var ok = document.getElementById('ok-register');
+  if(ok){ ok.textContent = 'Demo hesap için bilgilerini gir — 10.000$ sanal bakiye ile kendi hesabın açılır.'; ok.style.display = 'block'; }
+  var n = document.getElementById('inp-name'); if(n) try{ n.focus(); }catch(e){}
 }
 function _doRegister() {
   var name    = (document.getElementById('inp-name')||{}).value||'';
@@ -1719,6 +1726,17 @@ function initAuth(){
   // tarayıcı, sayfa her yenilendiğinde önbellekteki ESKİ (silinmeden
   // önceki) bakiye/pozisyon verisiyle "diriliyordu" — hesap gerçekte
   // silinmiş olsa bile.
+  // Eski ortak demo oturumu (DEMO-001) → temizle, kendi demo hesabını açtır
+  if(String(_cu.id)==='DEMO-001') {
+    try {
+      ['tx_current_user','tx_pos','tx_hist','tx_pending','tx_al'].forEach(function(k){ localStorage.removeItem(k); });
+    } catch(e){}
+    _cu = null;
+    var _ao = document.getElementById('authOverlay');
+    if(_ao) _ao.style.display = 'flex';
+    _doDemo();
+    return;
+  }
   if(typeof db !== 'undefined' && db && _cu.id) {
     db.collection('users').doc(String(_cu.id)).get().then(function(userDoc){
       if(!userDoc.exists) {

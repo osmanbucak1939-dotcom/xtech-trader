@@ -6838,6 +6838,9 @@ function _txJitterTick(){
     // fiyat akışına/hesaplamalara dokunmuyor, sadece bu görsel efekti
     // atlıyor (emir açmada zaten kullanılan aynı _marketHours.isOpen ile).
     if(typeof _marketHours !== 'undefined' && !_marketHours.isOpen(sym)) continue;
+    // 2026-10-20: Gerçek fiyat zaten sık geliyorsa (anlık akış: Capital.com/TD) sentetik
+    // titreme EKLEME — gerçek hareketin üstüne yapay hareket bindirip farklı göstermesin.
+    if(window._txRealAt && (Date.now() - (window._txRealAt[sym]||0)) < 3000) continue;
     var b = base[sym];
     if(!(b>0)){
       // Taban henüz yok (yeni eklenen sembol / köprü dışı kaynak) → mevcut gerçek fiyattan başlat.
@@ -7531,7 +7534,7 @@ function txApplyPrice(sym, rawMid, _synthetic) {
   if(!sym || !rawMid || rawMid <= 0) return;
   // Gerçek (sentetik olmayan) herhangi bir fiyat geldiyse "canlı" işaretle → tohumlayıcı bir daha dokunmaz,
   // kline son-kapanış tohumu üzerine yazmaz. (Köprü/RTDB/seed hepsi buradan geçer.)
-  if(!_synthetic){ if(!window._txLive) window._txLive = {}; window._txLive[sym] = true; }
+  if(!_synthetic){ if(!window._txLive) window._txLive = {}; window._txLive[sym] = true; (window._txRealAt = window._txRealAt || {})[sym] = Date.now(); }
   // Override aktifse: GERÇEK feed (köprü/RTDB tick) ekrana YAZILMAZ → override ile gerçek fiyat
   // arasında titreme/flicker olmaz. Gerçek fiyat yalnızca tabana saklanır (override kalkınca oraya döner).
   // Sentetik (titreme) çağrıları geçer; titreme override etrafında kıpırdar (bkz. _txJitterTick).

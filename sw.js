@@ -18,7 +18,7 @@
    ══════════════════════════════════════════════════════════════════════ */
 
 const CACHE = 'tradex-shell-v1';
-const SHELL = ['/', '/index.html', '/icon-192.png', '/icon-512.png', '/manifest.json'];
+const SHELL = ['./', 'index.html', 'icon-192.png', 'icon-512.png', 'manifest.json'];   // göreli: uygulama hangi klasördeyse orası
 
 self.addEventListener('install', function (e) {
   self.skipWaiting();                       // yeni sürüm beklemesin
@@ -63,7 +63,7 @@ self.addEventListener('fetch', function (e) {
     }).catch(function () {
       // Ağ yok → yedeğe düş
       return caches.match(req).then(function (hit) {
-        return hit || caches.match('/index.html');
+        return hit || caches.match('index.html');
       });
     })
   );

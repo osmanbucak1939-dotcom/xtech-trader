@@ -614,6 +614,13 @@ body { background:var(--bg); color:var(--text); font-family:var(--sans); font-si
 .dep-pend-btn{font-family:var(--sans);font-size:11px;font-weight:600;padding:6px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--panel);color:var(--text);cursor:pointer;white-space:nowrap}
 .dep-pend-btn.go{background:var(--accent,#2979ff);border-color:transparent;color:#fff}
 .dep-pend-ok{font-size:11px;font-weight:600;color:#26a69a;white-space:nowrap;display:flex;align-items:center;gap:4px}
+/* 2026-10-25 gerekli teminat göstergesi */
+.tx-margin-info{font-family:var(--sans);font-size:11px;color:var(--muted);margin-top:6px;display:flex;justify-content:space-between;gap:8px;line-height:1.3}
+.tx-margin-info b{font-family:var(--mono);font-weight:600;color:var(--text)}
+.tx-margin-info.over b.req{color:var(--sell)}
+.tx-margin-info.qt{justify-content:center;margin-top:4px;font-size:10px;white-space:nowrap}
+.tx-margin-info.qt .fm{display:none}
+.tx-margin-info.m{margin-top:10px;font-size:12px;padding:8px 10px;border-radius:8px;background:var(--panel2)}
 .wallet-note { font-family:var(--sans); font-size:11px; color:var(--muted); background:rgba(240,185,11,.06); border:1px solid rgba(240,185,11,.15); border-radius:6px; padding:8px 10px; margin-bottom:14px; line-height:1.6; }
 .wallet-submit { width:100%; padding:11px; border:none; border-radius:6px; font-family:var(--sans); font-size:12px; font-weight:700; cursor:pointer; transition:all .2s; letter-spacing:.5px; }
 .wallet-submit.deposit { background:var(--buy); color:#fff; }
@@ -2242,6 +2249,7 @@ function _txClearPasswordChangedSession() {
         <div class="ot-row">
           <div class="ot-label" data-lang="amountUnits">Miktar (adet)</div>
           <input class="ot-input" id="ordQty" value="0.01" type="number" placeholder="0.001" step="any" min="0">
+          <div class="tx-margin-info" id="ordMarginInfo"></div>
         </div>
         <div class="ot-input-row">
           <div class="ot-row">
@@ -2418,6 +2426,7 @@ function _txClearPasswordChangedSession() {
             <button class="qt-preset" onclick="qtSetLot(0.1,this)">0.1</button>
             <button class="qt-preset" onclick="qtSetLot(1,this)">1.0</button>
           </div>
+          <div class="tx-margin-info qt" id="qtMarginInfo"></div>
         </div>
         <button class="qt-buy" onclick="qtOrder('buy')">
           <span class="qt-dir">▲</span><span data-lang="buy">AL</span>
@@ -3098,7 +3107,7 @@ function _txCatLabel(g) {
 // bu listede olmayan semboller TwelveData'ya sorulur, NGAS orada tanımlı
 // olmadığı için fiyat akmasına rağmen GRAFİK BOŞ geliyordu. Köprüde NG=F
 // karşılığı var (INDEX_MAP), dolayısıyla /klines proxy'si geçmişi verebiliyor.
-var TX_INDEX_SYMS = ['SPX500X','NAS100X','DJ30X','DAX40X','DXY',
+var TX_INDEX_SYMS = ['SPX500X','NAS100X','DJ30X','DAX40X','DXY','SUGAR','COTTON','HOIL','COFFEE',
   'BRTUSD','XPDUSD','XPTUSD','NGAS','AAPL','TSLA','AMZN','GOOGL','NVDA','NFLX','WMT','BA'];
 // BIST hisseleri — fiyat + grafik köprüden (Yahoo .IS)
 var TX_BIST_SYMS = ['AEFES','AKBNK','ASELS','BIMAS','EKGYO','ENKAI','EREGL','FROTO','GARAN','GUBRF',
@@ -4304,6 +4313,48 @@ function saveAlarms() {
   }
 }
 
+// ══════════════════════════════════════════════════════════════
+// GEREKLİ TEMİNAT GÖSTERGESİ (2026-10-25)
+// Seçili lot için açılacak işlemin bağlayacağı teminatı (ve serbest teminatı)
+// emir panelinde, grafikteki hızlı al-sat'ta ve mobil emir ekranında gösterir.
+// Hesap placeOrder ile AYNI: fiyat × lot × kontrat → USD → ÷ kaldıraç.
+// ══════════════════════════════════════════════════════════════
+function _txReqMargin(sym, lot){
+  var p = (typeof prices!=='undefined') ? prices[sym] : null;
+  if(!p || !(p.price>0) || !(lot>0)) return null;
+  var sc = (typeof symConfig!=='undefined' && symConfig) ? symConfig.find(function(x){ return x.sym===sym; }) : null;
+  var cs = sc ? (parseFloat(sc.contractSize)||1) : 1;
+  var minLot = sc ? (parseFloat(sc.minLot)||0.01) : 0.01;
+  lot = Math.max(minLot, Math.round(lot/minLot)*minLot);
+  var lev = _txEffLev(sc, (_cu && _cu.leverage) ? _cu.leverage : 100);
+  var ask = (p.ask>0) ? p.ask : p.price;
+  return { margin: _quoteToUsd(sym, ask * lot * cs) / lev, lot: lot, lev: lev };
+}
+function _txMarginTick(){
+  try{
+    if(typeof curSym==='undefined' || !curSym) return;
+    var en = (typeof _curLang!=='undefined' && _curLang==='en');
+    var free = null;
+    try{
+      var acc = Object.assign({}, _cu||{}, {balance: (typeof balance!=='undefined'?balance:0)});
+      free = txCalcStats(acc, (typeof positions!=='undefined'?positions:[])).freeMargin;
+    }catch(e){}
+    [['ordMarginInfo','ordQty'],['qtMarginInfo','qtLotVal'],['mMarginInfo','mLI']].forEach(function(pair){
+      var box = document.getElementById(pair[0]); if(!box || !box.offsetParent) return;
+      var inp = document.getElementById(pair[1]);
+      var r = _txReqMargin(curSym, parseFloat(inp && inp.value) || 0.01);
+      if(!r){ box.innerHTML=''; return; }
+      var f2 = function(v){ return '$'+(v||0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+      var over = (free!==null && r.margin > free);
+      box.classList.toggle('over', over);
+      box.innerHTML = '<span>'+(en?'Margin':'Teminat')+': <b class="req">'+f2(r.margin)+'</b></span>'
+        + (free!==null ? '<span class="fm">'+(en?'Free':'Serbest')+': <b>'+f2(free)+'</b></span>' : '');
+      box.title = (en?'Leverage':'Kaldıraç')+' 1:'+r.lev + (over ? (en?' — insufficient free margin':' — serbest teminat yetersiz') : '');
+    });
+  }catch(e){}
+}
+setInterval(_txMarginTick, 500);
+
 function placeOrder(side) {
   if(window._readOnly){ var _ro2=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null); showToast(_ro2?_ro2.readOnlyTitle:'İzleyici Modu', _ro2?_ro2.readOnlyNoTrade:'Bu modda işlem açamazsınız.'); return; }
 
@@ -4424,7 +4475,8 @@ function placeOrder(side) {
 
   // Teminat artışı: yeni net qty - eski net qty (negatifse hedge azaltıyor, teminat iade)
   var netQty = Math.max(0, Math.round((_newNetQty - _oldNetQty) * 1e8) / 1e8);
-  var netCost = (execPrice * netQty * _contractSizeCost) / _leverage;
+  // ⚠️ 2026-10-25: USD'ye çevrilmiyordu → USDJPY gibi paritelerde "yetersiz teminat" yanlış çıkıyordu
+  var netCost = _quoteToUsd(curSym, execPrice * netQty * _contractSizeCost) / _leverage;
 
   // hedgeQty: artık balance işlemi için kullanılmıyor (MT4/5 model), 'hedge' flag'i için referans
   var hedgeQty = 0;
@@ -4640,7 +4692,7 @@ function _quoteToUsd(sym, amount) {
   // Kripto (USDT bazlı) → direkt USD
   if(sym.endsWith('USDT') || sym.endsWith('USDC')) return amount;
   // USD-sözleşmeli kontratlar — dönüşüm gerekmez
-  var _USD_CONTRACTS = ['SPX500X','NAS100X','DJ30X','USOIL','BRTUSD',
+  var _USD_CONTRACTS = ['SUGAR','COTTON','HOIL','COFFEE','SPX500X','NAS100X','DJ30X','USOIL','BRTUSD',
     'XAUUSD','XAGUSD','XPTUSD','XPDUSD','NGAS','DXY','FTSE100X','DAX40X',
     'AAPL','TSLA','AMZN','GOOGL','NVDA','NFLX','WMT','BA'];
   if(_USD_CONTRACTS.indexOf(sym) >= 0) return amount;
@@ -9405,6 +9457,7 @@ function symUnpin(sym){
         <button class="m-lb" onclick="mLA(1)">+</button>
       </div>
       <div class="m-prs" style="margin-top:8px" id="mPrs"></div>
+      <div class="tx-margin-info m" id="mMarginInfo"></div>
     </div>
     <div class="m-sltp">
       <div class="m-ig"><div class="m-il" data-lang="stopLoss">STOP LOSS</div><input class="m-in" id="mSL" type="number" placeholder="—" step="any"></div>

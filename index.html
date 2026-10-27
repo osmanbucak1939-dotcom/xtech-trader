@@ -3162,8 +3162,12 @@ function lwLoadKlines(sym, interval, cb) {
     }
     // Endeksler ve BIST — köprünün /klines (Yahoo) proxy'sinden
     if(TX_INDEX_SYMS.indexOf(sym) !== -1 || TX_BIST_SYMS.indexOf(sym) !== -1){ lwLoadIndexKlines(sym, interval, cb); return; }
-    // Forex/emtia/endeks — Twelve Data REST klines
-    lwLoadTwelveDataKlines(sym, interval, cb);
+    // 2026-10-28: Forex/emtia geçmişi ÖNCE köprüden (Capital.com — canlı fiyatla aynı kaynak).
+    // Köprü veremezse eskisi gibi Twelve Data REST'e düşer.
+    lwLoadIndexKlines(sym, interval, function(c){
+      if(c && c.length){ cb(c); return; }
+      lwLoadTwelveDataKlines(sym, interval, cb);
+    });
     return;
   }
 

@@ -625,6 +625,11 @@ body { background:var(--bg); color:var(--text); font-family:var(--sans); font-si
 .tx-hl{font-family:var(--sans);font-size:10px;color:var(--muted);margin-top:3px;white-space:nowrap;line-height:1.2}
 .tx-hl b{font-family:var(--mono);font-weight:600;color:var(--text);opacity:.85}
 .tx-hl.m{font-size:11px;margin-top:4px}
+/* 2026-11-02 piyasalar listesinde günlük düşük (SATIŞ altında) / yüksek (ALIŞ altında) */
+.mw-bid[data-hl]::after, .mw-ask[data-hl]::after{content:attr(data-hl);display:block;font-family:var(--mono);font-size:9px;font-weight:400;color:var(--muted);line-height:1.2;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:clip}
+#mPanMarket .mw-bid[data-hl], #mPanMarket .mw-ask[data-hl]{position:relative;overflow:visible}
+#mPanMarket .mw-bid[data-hl]::after, #mPanMarket .mw-ask[data-hl]::after{position:absolute;left:0;right:0;top:100%;margin-top:3px;font-size:10px;font-weight:500;color:var(--muted) !important;text-align:center}
+#mPanMarket .mw-row{padding-bottom:22px !important}
 .wallet-note { font-family:var(--sans); font-size:11px; color:var(--muted); background:rgba(240,185,11,.06); border:1px solid rgba(240,185,11,.15); border-radius:6px; padding:8px 10px; margin-bottom:14px; line-height:1.6; }
 .wallet-submit { width:100%; padding:11px; border:none; border-radius:6px; font-family:var(--sans); font-size:12px; font-weight:700; cursor:pointer; transition:all .2s; letter-spacing:.5px; }
 .wallet-submit.deposit { background:var(--buy); color:#fff; }
@@ -4448,6 +4453,27 @@ function _txHLTick(){
   }catch(e){}
 }
 setInterval(_txHLTick, 1000);
+// Piyasalar listesi (masaüstü + mobil): SATIŞ altında günlük düşük, ALIŞ altında günlük yüksek
+function _txHLMarketWatch(){
+  try{
+    if(typeof MW_MAP==='undefined' || !MW_MAP) return;
+    var en = (typeof _curLang!=='undefined' && _curLang==='en');
+    var LP = en?'L ':'D ', HP = en?'H ':'Y ';
+    Object.keys(MW_MAP).forEach(function(sym){
+      var hl = window._txHL[sym]; if(!hl) return;
+      var p = (typeof prices!=='undefined') ? prices[sym] : null;
+      if(p && p.price>0 && !p._seed){ if(p.price>hl.h) hl.h=p.price; if(p.price<hl.l) hl.l=p.price; }
+      var dec = (MW_MAP[sym].decimals!=null) ? MW_MAP[sym].decimals : 2;
+      var lo = LP+(+hl.l).toFixed(dec), hi = HP+(+hl.h).toFixed(dec);
+      var row = document.getElementById('mwr-'+sym);
+      var els = [];
+      if(row){ els.push([row.querySelector('.mw-bid'), lo]); els.push([row.querySelector('.mw-ask'), hi]); }
+      els.push([document.getElementById('mmwb-'+sym), lo]); els.push([document.getElementById('mmwa-'+sym), hi]);
+      els.forEach(function(x){ if(x[0] && x[0].getAttribute('data-hl')!==x[1]) x[0].setAttribute('data-hl', x[1]); });
+    });
+  }catch(e){}
+}
+setInterval(_txHLMarketWatch, 2000);
 
 function placeOrder(side) {
   if(window._readOnly){ var _ro2=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null); showToast(_ro2?_ro2.readOnlyTitle:'İzleyici Modu', _ro2?_ro2.readOnlyNoTrade:'Bu modda işlem açamazsınız.'); return; }
@@ -11135,9 +11161,28 @@ function _txWatchSessions(){
       var d = snap.exists ? snap.data() : null;
       if(d && d.data){ try{ d = (typeof d.data==='string') ? JSON.parse(d.data) : d.data; }catch(e){} }
       _txSessCfg = _txSessNorm(d || {});
+      window._txSessFromFs = true;
       if(typeof _checkMarketStatus==='function'){ try{ _checkMarketStatus(); }catch(e){} }
-    }, function(e){ console.warn('[seans] izlenemedi:', e && e.message); });
+    }, function(e){ console.warn('[seans] izlenemedi:', e && e.message); _txSessFromBridge(); });
   }catch(e){ console.warn('[seans] baslatilamadi:', e && e.message); }
+  // 2026-11-02 YEDEK: Firestore'dan seans ayarı okunamazsa (izin kuralı, bağlantı) köprüden al.
+  // Köprü aynı ayarı sunucu yetkisiyle okuyor; müşteri ile sunucu aynı saatleri kullansın.
+  setTimeout(function(){ if(!(_txSessCfg && _txSessCfg.templates && _txSessCfg.templates.length)) _txSessFromBridge(); }, 8000);
+  setInterval(function(){ if(!window._txSessFromFs) _txSessFromBridge(); }, 5*60*1000);
+}
+function _txSessFromBridge(){
+  try{
+    var pid = (firebase.app().options||{}).projectId; if(!pid) return;
+    var base = String(typeof TX_BRIDGE_URL!=='undefined'?TX_BRIDGE_URL:'').replace(/^wss:/i,'https:').replace(/^ws:/i,'http:').replace(/\/+$/,'');
+    if(!base) return;
+    fetch(base+'/sessions?pid='+encodeURIComponent(pid)).then(function(r){ return r.json(); }).then(function(j){
+      if(j && j.sessions && Array.isArray(j.sessions.templates) && j.sessions.templates.length){
+        _txSessCfg = _txSessNorm(j.sessions);
+        console.log('[seans] ayar köprüden alındı ('+j.sessions.templates.length+' şablon)');
+        if(typeof _checkMarketStatus==='function'){ try{ _checkMarketStatus(); }catch(e){} }
+      }
+    }).catch(function(){});
+  }catch(e){}
 }
 
 // Sembol şu an açık mı? (symConfig'ten sessionId okunur)

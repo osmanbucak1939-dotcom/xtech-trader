@@ -621,6 +621,10 @@ body { background:var(--bg); color:var(--text); font-family:var(--sans); font-si
 .tx-margin-info.qt{justify-content:center;margin-top:4px;font-size:10px;white-space:nowrap}
 .tx-margin-info.qt .fm{display:none}
 .tx-margin-info.m{margin-top:10px;font-size:12px;padding:8px 10px;border-radius:8px;background:var(--panel2)}
+/* 2026-11-02 günlük en yüksek / en düşük */
+.tx-hl{font-family:var(--sans);font-size:10px;color:var(--muted);margin-top:3px;white-space:nowrap;line-height:1.2}
+.tx-hl b{font-family:var(--mono);font-weight:600;color:var(--text);opacity:.85}
+.tx-hl.m{font-size:11px;margin-top:4px}
 .wallet-note { font-family:var(--sans); font-size:11px; color:var(--muted); background:rgba(240,185,11,.06); border:1px solid rgba(240,185,11,.15); border-radius:6px; padding:8px 10px; margin-bottom:14px; line-height:1.6; }
 .wallet-submit { width:100%; padding:11px; border:none; border-radius:6px; font-family:var(--sans); font-size:12px; font-weight:700; cursor:pointer; transition:all .2s; letter-spacing:.5px; }
 .wallet-submit.deposit { background:var(--buy); color:#fff; }
@@ -2228,10 +2232,12 @@ function _txClearPasswordChangedSession() {
           <div class="ot-side">
             <div class="ot-bid" id="otBid">—</div>
             <div class="ot-bid-lbl" data-lang="sellBid">SATIŞ (BID)</div>
+            <div class="tx-hl" id="otLow"></div>
           </div>
           <div class="ot-side">
             <div class="ot-ask" id="otAsk">—</div>
             <div class="ot-ask-lbl" data-lang="buyAsk">ALIŞ (ASK)</div>
+            <div class="tx-hl" id="otHigh"></div>
           </div>
         </div>
         <div class="ot-spread" id="otSpread">Spread: —</div>
@@ -3107,7 +3113,7 @@ function _txCatLabel(g) {
 // bu listede olmayan semboller TwelveData'ya sorulur, NGAS orada tanımlı
 // olmadığı için fiyat akmasına rağmen GRAFİK BOŞ geliyordu. Köprüde NG=F
 // karşılığı var (INDEX_MAP), dolayısıyla /klines proxy'si geçmişi verebiliyor.
-var TX_INDEX_SYMS = ['SPX500X','NAS100X','DJ30X','DAX40X','DXY','SUGAR','COTTON','HOIL','COFFEE',
+var TX_INDEX_SYMS = ['SPX500X','NAS100X','DJ30X','DAX40X','DXY','FTSE100X','FRA40X','SUGAR','COTTON','HOIL','COFFEE',
   'BRTUSD','XPDUSD','XPTUSD','NGAS','AAPL','TSLA','AMZN','GOOGL','NVDA','NFLX','WMT','BA'];
 // BIST hisseleri — fiyat + grafik köprüden (Yahoo .IS)
 var TX_BIST_SYMS = ['AEFES','AKBNK','ASELS','BIMAS','EKGYO','ENKAI','EREGL','FROTO','GARAN','GUBRF',
@@ -4359,6 +4365,90 @@ function _txMarginTick(){
 }
 setInterval(_txMarginTick, 500);
 
+// ══════════════════════════════════════════════════════════════
+// ŞİFREYİ GÖSTER / GİZLE (2026-11-02) — tüm şifre kutularına göz butonu
+// (giriş, hesap açma, şifre değiştirme)
+// ══════════════════════════════════════════════════════════════
+function _txPwEye(open){
+  return open
+    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.6"/></svg>'
+    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 6.1A10 10 0 0 1 12 6c6 0 9.5 6 9.5 6a17 17 0 0 1-3.2 3.8M6.6 7.6A16.6 16.6 0 0 0 2.5 12S6 18 12 18a9.6 9.6 0 0 0 4-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+}
+function _txAddPwToggles(){
+  document.querySelectorAll('input[type="password"]').forEach(function(inp){
+    if(inp.dataset.pwEye) return;
+    inp.dataset.pwEye = '1';
+    var wrap = document.createElement('span');
+    wrap.style.cssText = 'position:relative;display:block;width:100%';
+    inp.parentNode.insertBefore(wrap, inp);
+    wrap.appendChild(inp);
+    inp.style.paddingRight = '38px';
+    var b = document.createElement('button');
+    b.type = 'button'; b.tabIndex = -1;
+    b.setAttribute('aria-label','Şifreyi göster');
+    b.title = 'Şifreyi göster';
+    b.style.cssText = 'position:absolute;right:6px;top:50%;transform:translateY(-50%);width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:var(--muted);cursor:pointer;padding:0;border-radius:6px';
+    b.innerHTML = _txPwEye(true);
+    b.addEventListener('mousedown', function(e){ e.preventDefault(); });   // odak kutuda kalsın
+    b.addEventListener('click', function(){
+      var show = inp.type === 'password';
+      inp.type = show ? 'text' : 'password';
+      b.innerHTML = _txPwEye(!show);
+      b.title = show ? 'Şifreyi gizle' : 'Şifreyi göster';
+      b.setAttribute('aria-label', b.title);
+    });
+    wrap.appendChild(b);
+  });
+}
+document.addEventListener('DOMContentLoaded', function(){ try{ _txAddPwToggles(); }catch(e){} });
+setTimeout(function(){ try{ _txAddPwToggles(); }catch(e){} }, 1500);
+
+// ══════════════════════════════════════════════════════════════
+// GÜNLÜK EN YÜKSEK / EN DÜŞÜK (2026-11-02)
+// Köprü (Capital.com/Yahoo) gönderir; kripto için Binance 24 saatlik özet.
+// Masaüstü: emir panelinde SATIŞ altında "Düşük", ALIŞ altında "Yüksek".
+// Mobil: emir ekranında SAT/AL fiyatlarının altında.
+// ══════════════════════════════════════════════════════════════
+window._txHL = window._txHL || {};
+function _txHLMerge(d){
+  Object.keys(d||{}).forEach(function(k){
+    var v=d[k]; if(!v || !(v[0]>0) || !(v[1]>0)) return;
+    window._txHL[k] = { h: +v[0], l: +v[1] };
+  });
+}
+function _txHLCrypto(){
+  try{
+    var syms = Object.keys((typeof MW_MAP!=='undefined'&&MW_MAP)||{}).filter(function(s){ return /USDT$/.test(s); });
+    if(!syms.length) return;
+    fetch('https://api.binance.com/api/v3/ticker/24hr?symbols='+encodeURIComponent(JSON.stringify(syms)))
+      .then(function(r){ return r.json(); })
+      .then(function(arr){
+        if(!Array.isArray(arr)) return;
+        var d={}; arr.forEach(function(t){ d[t.symbol]=[parseFloat(t.highPrice),parseFloat(t.lowPrice)]; });
+        _txHLMerge(d);
+      }).catch(function(){});
+  }catch(e){}
+}
+setTimeout(_txHLCrypto, 4000); setInterval(_txHLCrypto, 60000);
+function _txHLTick(){
+  try{
+    if(typeof curSym==='undefined' || !curSym) return;
+    var hl = window._txHL[curSym];
+    var p = (typeof prices!=='undefined') ? prices[curSym] : null;
+    if(hl && p && p.price>0 && !p._seed){ if(p.price>hl.h) hl.h=p.price; if(p.price<hl.l) hl.l=p.price; }
+    var en = (typeof _curLang!=='undefined' && _curLang==='en');
+    var mw = (typeof MW_MAP!=='undefined' && MW_MAP) ? MW_MAP[curSym] : null;
+    var dec = (mw && mw.decimals!=null) ? mw.decimals : 2;
+    var f = function(v){ return (+v).toFixed(dec); };
+    var lo = hl ? (en?'Low ':'Düşük ')+'<b>'+f(hl.l)+'</b>' : '';
+    var hi = hl ? (en?'High ':'Yüksek ')+'<b>'+f(hl.h)+'</b>' : '';
+    [['otLow',lo],['mLow',lo],['otHigh',hi],['mHigh',hi]].forEach(function(x){
+      var el=document.getElementById(x[0]); if(el && el.innerHTML!==x[1]) el.innerHTML=x[1];
+    });
+  }catch(e){}
+}
+setInterval(_txHLTick, 1000);
+
 function placeOrder(side) {
   if(window._readOnly){ var _ro2=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null); showToast(_ro2?_ro2.readOnlyTitle:'İzleyici Modu', _ro2?_ro2.readOnlyNoTrade:'Bu modda işlem açamazsınız.'); return; }
 
@@ -4383,7 +4473,7 @@ function placeOrder(side) {
 
   // Piyasa saatleri kontrolü
   if(typeof _marketHours !== 'undefined' && !_marketHours.isOpen(curSym)) {
-    { var _mcL=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null); showToast(_mcL?_mcL.marketClosedTitle:'Piyasa Kapalı', _mcL?_mcL.marketClosedMsg:'Hafta sonu forex/emtia işlemi yapılamaz. Kripto işlemleri devam ediyor.', 'warning'); }
+    { var _mcL=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null); showToast(_mcL?_mcL.marketClosedTitle:'Piyasa Kapalı', _txClosedMsg(curSym) || (_mcL?_mcL.marketClosedMsg:'Hafta sonu forex/emtia işlemi yapılamaz. Kripto işlemleri devam ediyor.'), 'warning'); }
     return;
   }
   var _qtyEl = document.getElementById('ordQty');
@@ -4696,7 +4786,7 @@ function _quoteToUsd(sym, amount) {
   // Kripto (USDT bazlı) → direkt USD
   if(sym.endsWith('USDT') || sym.endsWith('USDC')) return amount;
   // USD-sözleşmeli kontratlar — dönüşüm gerekmez
-  var _USD_CONTRACTS = ['SUGAR','COTTON','HOIL','COFFEE','SPX500X','NAS100X','DJ30X','USOIL','BRTUSD',
+  var _USD_CONTRACTS = ['FRA40X','SUGAR','COTTON','HOIL','COFFEE','SPX500X','NAS100X','DJ30X','USOIL','BRTUSD',
     'XAUUSD','XAGUSD','XPTUSD','XPDUSD','NGAS','DXY','FTSE100X','DAX40X',
     'AAPL','TSLA','AMZN','GOOGL','NVDA','NFLX','WMT','BA'];
   if(_USD_CONTRACTS.indexOf(sym) >= 0) return amount;
@@ -4734,6 +4824,7 @@ function _quoteToUsd(sym, amount) {
   else if(quoteCur==='PLN') conv = _px('USDPLN') > 0 ? 1/_px('USDPLN') : 1/3.83;
   else if(quoteCur==='SEK') conv = _px('USDSEK') > 0 ? 1/_px('USDSEK') : 1/9.85;
   else if(quoteCur==='NOK') conv = _px('USDNOK') > 0 ? 1/_px('USDNOK') : 1/10.48;
+  else if(quoteCur==='DKK') conv = _px('USDDKK') > 0 ? 1/_px('USDDKK') : 1/6.45;   // 2026-11-02 EURDKK
   // XXX/USD çiftleri → direkt rate
   else if(quoteCur==='GBP') conv = _px('GBPUSD') > 0 ? _px('GBPUSD') : 1.34;
   else if(quoteCur==='EUR') conv = _px('EURUSD') > 0 ? _px('EURUSD') : 1.16;
@@ -4813,6 +4904,18 @@ function closePosition(id, reason='', closeQty) {
   // ID tip güvencesi: number veya string olabilir (Date.now() veya Firebase'den string gelebilir)
   const idx = positions.findIndex(p=>String(p.id)===String(id));
   if (idx === -1) return;
+  // ⚠️ 2026-11-02: Piyasa kapalıyken pozisyon KAPATILAMAZ (fiyat donuk — eski fiyattan kapatma
+  // açığı). Müşterinin elle kapatması, parçalı kapatma, SL/TP ve tarayıcıdaki stop-out hepsi
+  // buradan geçer. Sunucudaki risk motorları zaten kapalı sembolü atlıyor; bu, aynı kuralın
+  // müşteri tarafı. (Admin'in panelden kapatması ayrı yoldur ve bundan etkilenmez.)
+  if(typeof _marketHours !== 'undefined' && !_marketHours.isOpen(positions[idx].sym)) {
+    if(reason === '') {
+      var _cmL=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null);
+      showToast(_cmL?_cmL.marketClosedTitle:'Piyasa Kapalı',
+        (typeof _txClosedMsg==='function' && _txClosedMsg(positions[idx].sym)) || 'Piyasa kapalıyken pozisyon kapatılamaz. Piyasa açıldığında tekrar deneyin.', 'warning');
+    }
+    return;
+  }
   // ⚠️ ÇİFT KAPATMA KİLİDİ: Hızlı çift tıklama aynı pozisyonu 2-3 kez kapatıp geçmişe
   // 2-3 kez kâr yazıyordu. Kapatma başlayınca kilitle; ikinci çağrı reddedilsin.
   window._closingPositions = window._closingPositions || {};
@@ -5256,6 +5359,9 @@ function _checkStopOut(equity, marginUsed, marginLvl) {
     var plB = _quoteToUsd(b.sym, (b.side==='buy' ? pb-b.openPrice : b.openPrice-pb) * b.qty * (b.contractSize||1));
     return plA - plB;
   });
+  // 2026-11-02: piyasası kapalı sembolün pozisyonu stop-out'ta kapatılamaz → açık olanlardan seç
+  if(typeof _marketHours !== 'undefined') sortedPos = sortedPos.filter(function(p){ return _marketHours.isOpen(p.sym); });
+  if(!sortedPos.length){ window._stopOutBusy = false; window._stopOutLockAt = 0; return; }
   var toClose = sortedPos[0];
   console.log('[stop-out] tetiklendi eq='+(typeof equity==='number'?equity.toFixed(2):'?')+
               ' ml='+(marginLvl?marginLvl.toFixed(1):'null')+
@@ -5850,6 +5956,19 @@ var MARKET_GROUPS = [
       {sym:'USDNOK',  name:'USD/NOK',   full:'Dolar / Norveç Kronası',    icon:'N', spread:0.005, decimals:4},
       {sym:'GBPCHF',  name:'GBP/CHF',   full:'Sterlin / Frank',           icon:'£', spread:0.0004,decimals:5},
       {sym:'AUDNZD',  name:'AUD/NZD',   full:'Avustralya / Yeni Zelanda', icon:'A', spread:0.0004,decimals:5},
+      {sym:'AUDCHF', name:'AUD/CHF', full:'Avustralya / İsviçre', icon:'A', spread:0.0003, decimals:5},   // 2026-11-02
+      {sym:'AUDJPY', name:'AUD/JPY', full:'Avustralya / Yen', icon:'A', spread:0.03, decimals:3},   // 2026-11-02
+      {sym:'CADJPY', name:'CAD/JPY', full:'Kanada / Yen', icon:'C', spread:0.03, decimals:3},   // 2026-11-02
+      {sym:'CHFJPY', name:'CHF/JPY', full:'İsviçre / Yen', icon:'₣', spread:0.03, decimals:3},   // 2026-11-02
+      {sym:'EURAUD', name:'EUR/AUD', full:'Euro / Avustralya', icon:'€', spread:0.0003, decimals:5},   // 2026-11-02
+      {sym:'EURCHF', name:'EUR/CHF', full:'Euro / İsviçre', icon:'€', spread:0.0003, decimals:5},   // 2026-11-02
+      {sym:'EURNZD', name:'EUR/NZD', full:'Euro / Yeni Zelanda', icon:'€', spread:0.0005, decimals:5},   // 2026-11-02
+      {sym:'EURDKK', name:'EUR/DKK', full:'Euro / Danimarka', icon:'€', spread:0.001, decimals:5},   // 2026-11-02
+      {sym:'GBPCAD', name:'GBP/CAD', full:'Sterlin / Kanada', icon:'£', spread:0.0005, decimals:5},   // 2026-11-02
+      {sym:'GBPNZD', name:'GBP/NZD', full:'Sterlin / Yeni Zelanda', icon:'£', spread:0.0006, decimals:5},   // 2026-11-02
+      {sym:'NZDCAD', name:'NZD/CAD', full:'Yeni Zelanda / Kanada', icon:'N', spread:0.0004, decimals:5},   // 2026-11-02
+      {sym:'NZDCHF', name:'NZD/CHF', full:'Yeni Zelanda / İsviçre', icon:'N', spread:0.0004, decimals:5},   // 2026-11-02
+      {sym:'NZDJPY', name:'NZD/JPY', full:'Yeni Zelanda / Yen', icon:'N', spread:0.03, decimals:3},   // 2026-11-02
       {sym:'CADCHF',  name:'CAD/CHF',   full:'Kanada / Frank',            icon:'C', spread:0.0004,decimals:5},
     ]
   },
@@ -5875,6 +5994,7 @@ var MARKET_GROUPS = [
       {sym:'DJ30X',    name:'DOW 30',   full:'Dow Jones 30',           icon:'', spread:1.00,   decimals:2},
       {sym:'FTSE100X', name:'FTSE 100', full:'FTSE 100 UK',            icon:'🇬🇧',spread:0.50,   decimals:2},
       {sym:'DAX40X',   name:'DAX 40',   full:'DAX Almanya',            icon:'🇩🇪',spread:0.80,   decimals:2},
+      {sym:'FRA40X',   name:'CAC 40',   full:'CAC 40 Fransa',   icon:'🇫🇷',spread:0.80,   decimals:2},   // 2026-11-02
       {sym:'DXY',      name:'DXY',      full:'Dolar Endeksi',          icon:'', spread:0.030,  decimals:3},
       {sym:'XU100X',   name:'BIST 100', full:'Borsa İstanbul',         icon:'🇹🇷',spread:2.00,   decimals:2},
     ]
@@ -6033,7 +6153,7 @@ function _txSymIcon(gid, color, size, sym, rawIcon) {
 // FTSE100X ve XU100X gizli KALIYOR: hâlâ fiyat kaynakları yok.
 var TX_HIDDEN = [
   'WTIUSD','SPXUSD','NASUSD','DJUSD','DAXUSD',
-  'FTSE100X','XU100X',
+  'XU100X',   // FTSE100X 2026-11-02'de yeniden açıldı
   'XBRUSD','XBR'
 ];
 MARKET_GROUPS.forEach(function(g){
@@ -7964,6 +8084,8 @@ function _txStartBridge(){
     _txBrWs.onopen = function(){ console.log('[köprü] bağlandı'); };
     _txBrWs.onmessage = function(e){
       var msg; try { msg = JSON.parse(e.data); } catch(ex){ return; }
+      if(msg.type === 'hl' && msg.d){ _txHLMerge(msg.d); return; }
+      if(msg.type === 'snapshot' && msg.hl) _txHLMerge(msg.hl);
       if(msg.type === 'snapshot' && msg.prices){
         // İlk bağlantıda son bilinen tüm fiyatlar — ekranı hemen doldur
         var n=0;
@@ -9428,10 +9550,12 @@ function symUnpin(sym){
     <div class="m-side sell" style="cursor:default">
       <div class="m-slbl" data-lang="sellBid">SAT / BID</div>
       <div class="m-sprc" id="mBid">—</div>
+      <div class="tx-hl m" id="mLow"></div>
     </div>
     <div class="m-side buy" style="cursor:default">
       <div class="m-slbl" data-lang="buyAsk">AL / ASK</div>
       <div class="m-sprc" id="mAsk">—</div>
+      <div class="tx-hl m" id="mHigh"></div>
     </div>
   </div>
   <div class="m-tbody">
@@ -11020,6 +11144,31 @@ function _txWatchSessions(){
 function _txSymOpen(sym){
   var sc = (typeof _txGetSymConf==='function') ? _txGetSymConf(sym) : null;
   return txSessionIsOpen(sym, sc, _txSessCfg);
+}
+// 2026-10-29: Kapalı piyasa uyarısı artık NEDENİ söylüyor (tatil adı / seans saatleri).
+// Eskiden her durumda "Hafta sonu forex işlemi yapılamaz" yazıyordu.
+function _txClosedMsg(sym){
+  try{
+    if(!_txSessCfg || !_txSessCfg.templates || !_txSessCfg.templates.length) return '';
+    var st = _txSymState(sym); if(!st || st.open) return '';
+    var en = (typeof _curLang!=='undefined' && _curLang==='en');
+    var tpl = _txSessFind(_txSessCfg, st.tpl) || {};
+    var tn = tpl.name || st.tpl || '';
+    var now = _txSessNow(tpl.tz);
+    if(st.reason==='holiday'){
+      var hn = '';
+      (_txSessCfg.holidays||[]).forEach(function(h){
+        if(h && h.date===now.ymd && (!h.templates||!h.templates.length||h.templates.indexOf(st.tpl)>=0) && h.name) hn = h.name;
+      });
+      return en ? ('Today is a holiday'+(hn?' ('+hn+')':'')+' — '+tn+' is closed.')
+                : ('Bugün tatil'+(hn?' ('+hn+')':'')+' — '+tn+' işlemleri kapalı.');
+    }
+    var days = tpl.days || {};
+    var today = (days[now.day] || days[String(now.day)] || []).map(function(r){ return r[0]+'–'+r[1]; }).join(', ');
+    if(now.day===0 || now.day===6) return en ? (tn+' is closed at the weekend.') : ('Hafta sonu '+tn+' işlemleri kapalı.');
+    return en ? (tn+' is closed now.'+(today?' Trading hours today: '+today:''))
+              : (tn+' şu an kapalı.'+(today?' Bugünkü işlem saatleri: '+today:' Bugün işlem yok.'));
+  }catch(e){ return ''; }
 }
 function _txSymState(sym){
   var sc = (typeof _txGetSymConf==='function') ? _txGetSymConf(sym) : null;

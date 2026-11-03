@@ -3146,7 +3146,20 @@ function _txCatLabel(g) {
 // bu listede olmayan semboller TwelveData'ya sorulur, NGAS orada tanımlı
 // olmadığı için fiyat akmasına rağmen GRAFİK BOŞ geliyordu. Köprüde NG=F
 // karşılığı var (INDEX_MAP), dolayısıyla /klines proxy'si geçmişi verebiliyor.
+// 2026-11-03: ABD hissesi logosu — farklı kodla eklenmiş hisseler (APPLE, AAPL.US, #AAPL) de tanınır
+var TX_US_STOCKS = ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AVGO','NFLX','AMD','INTC','ORCL','CRM','ADBE','PLTR','JPM','V','MA','BAC','WMT','COST','KO','PEP','MCD','DIS','NKE','BA','XOM','UBER','COIN'];
+var TX_US_ALIAS = {APPLE:'AAPL',TESLA:'TSLA',AMAZON:'AMZN',GOOGLE:'GOOGL',GOOG:'GOOGL',ALPHABET:'GOOGL',NVIDIA:'NVDA',NETFLIX:'NFLX',MICROSOFT:'MSFT',FACEBOOK:'META',BOEING:'BA',WALMART:'WMT',INTEL:'INTC',ORACLE:'ORCL',DISNEY:'DIS',NIKE:'NKE',COCACOLA:'KO',PEPSI:'PEP',PEPSICO:'PEP',MCDONALDS:'MCD',VISA:'V',MASTERCARD:'MA',JPMORGAN:'JPM',EXXON:'XOM',COINBASE:'COIN',PALANTIR:'PLTR',SALESFORCE:'CRM',ADOBE:'ADBE',BROADCOM:'AVGO',COSTCO:'COST',BOFA:'BAC'};
+function _txUsLogoSym(sym){
+  var s = String(sym||'').toUpperCase();
+  if(TX_US_ALIAS[s]) return TX_US_ALIAS[s];
+  var n = s.replace(/^#/,'').replace(/[._\-](US|USA|NYSE|NASDAQ|NAS|O|N)$/,'');
+  if(TX_US_ALIAS[n]) return TX_US_ALIAS[n];
+  return TX_US_STOCKS.indexOf(n) >= 0 ? n : null;
+}
 var TX_INDEX_SYMS = ['SPX500X','NAS100X','DJ30X','DAX40X','DXY','FTSE100X','FRA40X','SUGAR','COTTON','HOIL','COFFEE',
+  // 2026-11-03: RBOB + takma ad kodları (köprü ana sembolün geçmişini verir)
+  'RBOB','BRENT','UKOIL','XBRUSD','BRENTOIL','WTI','WTIUSD','USOUSD','CRUDE','CRUDEOIL','XTIUSD','GASOLINE','RBOBUSD','PALLADIUM','PLATINUM','GOLD','SILVER','NATGAS','NATURALGAS',
+  'APPLE','TESLA','AMAZON','GOOGLE','GOOG','ALPHABET','NVIDIA','NETFLIX','MICROSOFT','FACEBOOK','BOEING','WALMART','INTEL','ORACLE','DISNEY','NIKE','COCACOLA','PEPSI','PEPSICO','MCDONALDS','VISA','MASTERCARD','JPMORGAN','EXXON','COINBASE','PALANTIR','SALESFORCE','ADOBE','BROADCOM','COSTCO','BOFA',
   'BRTUSD','XPDUSD','XPTUSD','NGAS','AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AVGO','NFLX','AMD','INTC','ORCL','CRM','ADBE','PLTR','JPM','V','MA','BAC','WMT','COST','KO','PEP','MCD','DIS','NKE','BA','XOM','UBER','COIN'];
 // BIST hisseleri — fiyat + grafik köprüden (Yahoo .IS)
 var TX_BIST_SYMS = ['AEFES','AKBNK','ASELS','BIMAS','EKGYO','ENKAI','EREGL','FROTO','GARAN','GUBRF',
@@ -3178,6 +3191,8 @@ function lwLoadKlines(sym, interval, cb) {
   if(!isCrypto) {
     // Sentetik sembol mü? priceSource varsa kaynak sembolün verisini dönüştür
     var _sc = (typeof symConfig !== 'undefined' && symConfig) ? symConfig.find(function(s){ return s.sym===sym; }) : null;
+    // 2026-11-03: kaynak ölüyse (fiyat almıyorsa) sembolün kendi geçmişi kullanılır
+    if(_sc && _sc.priceSource && _sc.priceSource !== sym && window._txRealAt && (Date.now() - (window._txRealAt[_sc.priceSource]||0)) > 120000 && (Date.now() - (window._txRealAt[sym]||0)) < 120000) _sc = null;
     if(_sc && _sc.priceSource) {
       var _srcSym = _sc.priceSource;
       var _factor = parseFloat(_sc.priceFactor)||1;
@@ -4970,7 +4985,9 @@ function _quoteToUsd(sym, amount) {
   // USD-sözleşmeli kontratlar — dönüşüm gerekmez
   var _USD_CONTRACTS = ['FRA40X','SUGAR','COTTON','HOIL','COFFEE','SPX500X','NAS100X','DJ30X','USOIL','BRTUSD',
     'XAUUSD','XAGUSD','XPTUSD','XPDUSD','NGAS','DXY','FTSE100X','DAX40X',
-    'AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AVGO','NFLX','AMD','INTC','ORCL','CRM','ADBE','PLTR','JPM','V','MA','BAC','WMT','COST','KO','PEP','MCD','DIS','NKE','BA','XOM','UBER','COIN'];
+    'AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AVGO','NFLX','AMD','INTC','ORCL','CRM','ADBE','PLTR','JPM','V','MA','BAC','WMT','COST','KO','PEP','MCD','DIS','NKE','BA','XOM','UBER','COIN',
+    // 2026-11-03: takma ad kodları + RBOB (dolar bazlı)
+    'BRENT','UKOIL','XBRUSD','BRENTOIL','WTI','WTIUSD','USOUSD','CRUDE','CRUDEOIL','XTIUSD','PALLADIUM','PLATINUM','GOLD','SILVER','NATGAS','NATURALGAS','GASOLINE','RBOBUSD','APPLE','TESLA','AMAZON','GOOGLE','GOOG','ALPHABET','NVIDIA','NETFLIX','MICROSOFT','FACEBOOK','BOEING','WALMART','INTEL','ORACLE','DISNEY','NIKE','COCACOLA','PEPSI','PEPSICO','MCDONALDS','VISA','MASTERCARD','JPMORGAN','EXXON','COINBASE','PALANTIR','SALESFORCE','ADOBE','BROADCOM','COSTCO','BOFA','RBOB'];
   if(_USD_CONTRACTS.indexOf(sym) >= 0) return amount;
   // Quote currency belirle
   var quoteCur = '';
@@ -6171,6 +6188,7 @@ var MARKET_GROUPS = [
       {sym:'USOIL',   name:'WTI/USD',  full:'Ham Petrol (WTI)',        icon:'', spread:0.03,   decimals:2},
       {sym:'BRTUSD',  name:'BRENT',    full:'Brent Petrol',            icon:'', spread:0.03,   decimals:2},
       {sym:'NGAS',    name:'NAT GAS',  full:'Doğal Gaz',               icon:'', spread:0.005,  decimals:3},
+      {sym:'RBOB',    name:'RBOB',     full:'RBOB Benzin',             icon:'', spread:0.005,  decimals:4},   // 2026-11-03 Capital.com
       // ⚠️ 2026-08-19: Paladyum köprüde (YMAP: PA=F) besleniyordu ama katalogda
       // yoktu — bu yüzden "Eksikleri içe aktar" ile de eklenemiyordu.
       {sym:'XPDUSD',  name:'XPD/USD',  full:'Paladyum / Dolar',        icon:'',  spread:1.50,   decimals:2},
@@ -7330,8 +7348,8 @@ function _mwBuildRowHtml(it2, gid) {
           + '<img src="' + _logoUrl + '" alt="" loading="lazy" style="width:20px;height:20px;border-radius:50%;object-fit:contain;background:#fff;border:1px solid var(--border);flex-shrink:0" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-block\';">'
           + '<span style="display:none;width:10px;height:10px;border-radius:50%;background:' + _dot_color + ';"></span>'
           + '</div>';
-  } else if (gid === 'stocks') {
-    var _logoUrl2 = 'https://financialmodelingprep.com/image-stock/' + it2.sym + '.png';
+  } else if (gid === 'stocks' || _txUsLogoSym(it2.sym)) {
+    var _logoUrl2 = 'https://financialmodelingprep.com/image-stock/' + (_txUsLogoSym(it2.sym) || it2.sym) + '.png';
     html += '<div class="mw-icon" onclick="' + _favOnclick + '" style="display:flex;align-items:center;justify-content:center;" title="' + _favTitle + '">'
           + '<img src="' + _logoUrl2 + '" alt="" loading="lazy" style="width:20px;height:20px;border-radius:50%;object-fit:contain;background:#fff;border:1px solid var(--border);flex-shrink:0" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-block\';">'
           + '<span style="display:none;width:10px;height:10px;border-radius:50%;background:' + _dot_color + ';"></span>'
@@ -8278,7 +8296,10 @@ function _txApplyBridgePrice(sym, price, chg){
   if(!window._txLive) window._txLive = {};
   window._txLive[sym] = true;          // gerçek (canlı) tick geldi → kline seed üzerine yazmasın
   var sc = _txGetSymConf(sym);
-  if(sc && sc.priceSource) return;     // sentetik → kaynaktan türetilir
+  // ⚠️ 2026-11-03: Sentetik sembol yalnız KAYNAĞI gerçekten fiyat alıyorsa kaynaktan türetilir.
+  // Kaynak ölü bir koda bağlıysa (eski Twelve Data kodları vb.) fiyat 1.00'da takılı kalıyordu —
+  // artık köprü bu sembolün kendi fiyatını gönderiyorsa o kullanılır.
+  if(sc && sc.priceSource && sc.priceSource !== sym && window._txRealAt && (Date.now() - (window._txRealAt[sc.priceSource]||0)) < 120000) return;
   txApplyPrice(sym, price);
 }
 function _txStartBridge(){
@@ -10192,8 +10213,8 @@ function mob(){ return _txIsMobile(); }
         + '<img src="'+_logoUrl+'" alt="" loading="lazy" style="width:20px;height:20px;border-radius:50%;object-fit:contain;background:#fff;border:1px solid var(--border);flex-shrink:0" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-block\';">'
         + '<span style="display:none;width:10px;height:10px;border-radius:50%;background:'+dotColor+';"></span>'
         + '</div>';
-    } else if (gid === 'stocks') {
-      var _logoUrl2 = 'https://financialmodelingprep.com/image-stock/' + it2.sym + '.png';
+    } else if (gid === 'stocks' || _txUsLogoSym(it2.sym)) {
+      var _logoUrl2 = 'https://financialmodelingprep.com/image-stock/' + (_txUsLogoSym(it2.sym) || it2.sym) + '.png';
       icoHtml = '<div class="mw-icon" onclick="'+_favOnclick+'" style="display:flex;align-items:center;justify-content:center;">'
         + '<img src="'+_logoUrl2+'" alt="" loading="lazy" style="width:20px;height:20px;border-radius:50%;object-fit:contain;background:#fff;border:1px solid var(--border);flex-shrink:0" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-block\';">'
         + '<span style="display:none;width:10px;height:10px;border-radius:50%;background:'+dotColor+';"></span>'
@@ -11341,9 +11362,10 @@ var TX_SESSION_DEFAULTS = {
 };
 var TX_SESSION_SYMMAP = {
   euidx: ['DAX40X','FTSE100X','FRA40X'],
-  oil:   ['USOIL','BRTUSD','WTIUSD'],
-  usidx: ['NAS100X','SPX500X','DJ30X','DXY','XAUUSD','XAGUSD','XPTUSD','XPDUSD','NGAS','HOIL','SUGAR','COTTON','COFFEE','GAUTRY'],
-  usstock: ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AVGO','NFLX','AMD','INTC','ORCL','CRM','ADBE','PLTR','JPM','V','MA','BAC','WMT','COST','KO','PEP','MCD','DIS','NKE','BA','XOM','UBER','COIN']
+  oil:   ['USOIL','BRTUSD','WTIUSD','RBOB','BRENT','UKOIL','XBRUSD','BRENTOIL','WTI','USOUSD','CRUDE','CRUDEOIL','XTIUSD','GASOLINE','RBOBUSD'],
+  usidx: ['NAS100X','SPX500X','DJ30X','DXY','XAUUSD','XAGUSD','XPTUSD','XPDUSD','NGAS','HOIL','SUGAR','COTTON','COFFEE','GAUTRY','PALLADIUM','PLATINUM','GOLD','SILVER','NATGAS','NATURALGAS'],
+  usstock: ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AVGO','NFLX','AMD','INTC','ORCL','CRM','ADBE','PLTR','JPM','V','MA','BAC','WMT','COST','KO','PEP','MCD','DIS','NKE','BA','XOM','UBER','COIN',
+    'APPLE','TESLA','AMAZON','GOOGLE','GOOG','ALPHABET','NVIDIA','NETFLIX','MICROSOFT','FACEBOOK','BOEING','WALMART','INTEL','ORACLE','DISNEY','NIKE','COCACOLA','PEPSI','PEPSICO','MCDONALDS','VISA','MASTERCARD','JPMORGAN','EXXON','COINBASE','PALANTIR','SALESFORCE','ADOBE','BROADCOM','COSTCO','BOFA']
 };
 // 2026-11-03: Sembolün şablonu (sessionId) yoksa — ör. sembol ayarı eski bir sekmeden/cihazdan
 // üzerine yazılıp bağlar silindiyse — "varsayılan" (forex = hafta içi 7/24) yerine sembolün

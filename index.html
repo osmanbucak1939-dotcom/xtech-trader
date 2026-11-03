@@ -2069,7 +2069,24 @@ function _txClearPasswordChangedSession() {
         // Pending orders
         if(d.pendingOrders !== undefined) {
           try {
+            var _prevPend = Array.isArray(pendingOrders) ? pendingOrders.slice() : [];
             pendingOrders = Array.isArray(d.pendingOrders) ? d.pendingOrders : JSON.parse(d.pendingOrders||'[]');
+            try { localStorage.setItem('tx_pending', JSON.stringify(pendingOrders)); } catch(e){}
+            // 2026-11-03: sunucunun açtığı / iptal ettiği emir için müşteriye bildirim
+            if(window._txPendSeen) {
+              var _nowIds = {}; pendingOrders.forEach(function(x){ _nowIds[String(x.id)] = 1; });
+              var _posArr = Array.isArray(d.positions) ? d.positions : [];
+              var _plog = Array.isArray(d.pendingLog) ? d.pendingLog : [];
+              _prevPend.forEach(function(po){
+                if(_nowIds[String(po.id)]) return;
+                var _fp = _posArr.find(function(p){ return String(p.fromPending) === String(po.id); });
+                var _rj = _plog.find(function(l){ return String(l.id) === String(po.id); });
+                var _pL=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null);
+                if(_fp) showToast(_pL&&_pL.orderTriggeredTitle?_pL.orderTriggeredTitle:'Emir Tetiklendi ✓', String(po.type).replace('_',' ').toUpperCase()+' '+po.sym+' @ '+(typeof fp==='function'?fp(_fp.openPrice, _fp.decimals||2):_fp.openPrice));
+                else if(_rj) showToast('Bekleyen Emir İptal', po.sym+' — '+({yetersiz_teminat:'yetersiz serbest teminat',teminat_seviyesi:'teminat seviyesi yetersiz',sembol_kisitli:'sembol grubunuzda kısıtlı',izleyici_modu:'hesap izleyici modunda'}[_rj.reason]||_rj.reason), 'warning');
+              });
+            }
+            window._txPendSeen = true;
           } catch(e){}
         }
         // Finlog
@@ -3634,7 +3651,13 @@ function lwDrawPositionLines() {
 }
 
 /* ── Bekleyen emir kontrolü ─────────────────────── */
+// ⚠️ 2026-11-03: Bekleyen emirleri artık SUNUCU açıyor (Railway risk motoru — müşterinin
+// uygulaması kapalıyken de). Bu fonksiyon canlı fiyat akışına zaten bağlı değildi; yalnız
+// sayfa açılışında DEMO fiyatlarla bir kez çalışıp yanlış fiyattan emir açma riski taşıyordu.
+// Sunucu açılan emri pozisyonlara ekler ve listeden siler; ekran dinleyiciyle güncellenir.
+var TX_CLIENT_PENDING = false;
 function checkPendingOrders(sym, price) {
+  if(!TX_CLIENT_PENDING) return;
   if(!pendingOrders || !pendingOrders.length) return;
   var triggered = [];
   for(var i=0; i<pendingOrders.length; i++) {
@@ -3701,11 +3724,31 @@ function renderPendingOrders() {
   }).join('');
 }
 
+// 2026-11-03: Bekleyen emir listesini TOPTAN yazmak yerine transaction ile tek emri ekle/sil.
+// Sebep: sunucu bir emri açıp listeden silmişken eski listenin geri yazılması, emri
+// "diriltip" ikinci kez açılmasına yol açardı (pozisyonlardaki diriltme sorununun aynısı).
+function _txPendingTx(mutate) {
+  if(typeof db === 'undefined' || !db || typeof _cu === 'undefined' || !_cu) {
+    if(typeof fbSaveUserData==='function' && _cu) fbSaveUserData(_cu.id, {pendingOrders: pendingOrders});
+    return;
+  }
+  var ref = db.collection('users').doc(String(_cu.id));
+  db.runTransaction(function(tx){
+    return tx.get(ref).then(function(doc){
+      var cur = doc.exists ? doc.data().pendingOrders : [];
+      if(typeof cur === 'string') { try { cur = JSON.parse(cur||'[]'); } catch(e){ cur = []; } }
+      if(!Array.isArray(cur)) cur = [];
+      tx.set(ref, { pendingOrders: mutate(cur.slice()), updatedAt: new Date().toISOString() }, { merge: true });
+    });
+  }).catch(function(e){ console.warn('[pending] transaction:', e.message); });
+}
 function cancelPending(i) {
   if(window._readOnly){ var _ro1=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null); showToast(_ro1?_ro1.readOnlyTitle:'İzleyici Modu', _ro1?_ro1.readOnlyCancelPending:'Bu modda bekleyen emir iptal edemezsiniz.'); return; }
+  var _cpo = pendingOrders[i];
+  if(!_cpo) return;
   pendingOrders.splice(i, 1);
   localStorage.setItem('tx_pending', JSON.stringify(pendingOrders));
-  if(typeof fbSaveUserData==='function' && _cu) fbSaveUserData(_cu.id, {pendingOrders: pendingOrders});
+  _txPendingTx(function(arr){ return arr.filter(function(x){ return String(x.id) !== String(_cpo.id); }); });
   renderPendingOrders();
   { var _cnL=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null); showToast(_cnL?_cnL.cancelledTitle:'İptal Edildi', _cnL?_cnL.pendingCancelledMsg:'Bekleyen emir iptal edildi'); }
 }
@@ -4421,24 +4464,56 @@ function _txHLMerge(d){
     window._txHL[k] = { h: +v[0], l: +v[1] };
   });
 }
+// ⚠️ 2026-11-03: Toplu istek, listede Binance'te olmayan TEK bir sembol bile varsa tamamen
+// reddediliyordu ("Invalid symbol") → hiçbir kriptoda yüksek/düşük görünmüyordu. Artık toplu
+// istek başarısız olursa semboller tek tek sorulur; Binance'in ana adresi cevap vermezse
+// herkese açık piyasa verisi adresi (data-api.binance.vision) denenir. Geçersiz semboller atlanır.
+var _txHLBad = {};
 function _txHLCrypto(){
   try{
-    var syms = Object.keys((typeof MW_MAP!=='undefined'&&MW_MAP)||{}).filter(function(s){ return /USDT$/.test(s); });
+    var syms = Object.keys((typeof MW_MAP!=='undefined'&&MW_MAP)||{}).filter(function(s){ return /USDT$/.test(s) && !_txHLBad[s]; });
     if(!syms.length) return;
-    fetch('https://api.binance.com/api/v3/ticker/24hr?symbols='+encodeURIComponent(JSON.stringify(syms)))
-      .then(function(r){ return r.json(); })
-      .then(function(arr){
-        if(!Array.isArray(arr)) return;
-        var d={}; arr.forEach(function(t){ d[t.symbol]=[parseFloat(t.highPrice),parseFloat(t.lowPrice)]; });
-        _txHLMerge(d);
-      }).catch(function(){});
+    var hosts = ['https://api.binance.com','https://data-api.binance.vision'];
+    var put = function(arr){ var d={}; arr.forEach(function(t){ if(t && t.symbol) d[t.symbol]=[parseFloat(t.highPrice),parseFloat(t.lowPrice)]; }); _txHLMerge(d); };
+    var one = function(sym, hi){
+      fetch(hosts[hi]+'/api/v3/ticker/24hr?symbol='+sym)
+        .then(function(r){ if(r.status===400) { _txHLBad[sym]=1; return null; } return r.json(); })
+        .then(function(t){ if(t && t.symbol) put([t]); })
+        .catch(function(){ if(hi+1<hosts.length) one(sym, hi+1); });
+    };
+    var batch = function(hi){
+      fetch(hosts[hi]+'/api/v3/ticker/24hr?symbols='+encodeURIComponent(JSON.stringify(syms)))
+        .then(function(r){ return r.json(); })
+        .then(function(arr){
+          if(Array.isArray(arr)) return put(arr);
+          syms.forEach(function(s, i){ setTimeout(function(){ one(s, hi); }, i*150); });   // geçersiz sembol var → tek tek
+        })
+        .catch(function(){ if(hi+1<hosts.length) batch(hi+1); });
+    };
+    batch(0);
   }catch(e){}
+}
+// Sentetik sembol (symConfig.priceSource): yüksek/düşük kaynağınkinden aynı formülle türetilir
+// (kaynak × priceFactor + ofset). Admin elle fiyat (override) girdiyse türetilmez.
+function _txHLFor(sym){
+  var hl = window._txHL[sym];
+  if(hl) return hl;
+  try{
+    if(typeof _txAdminOverrides!=='undefined' && _txAdminOverrides[sym] > 0) return null;
+    var sc = (typeof _txGetSymConf==='function') ? _txGetSymConf(sym) : null;
+    if(!sc || !sc.priceSource || sc.priceSource===sym) return null;
+    var src = window._txHL[sc.priceSource]; if(!src) return null;
+    var f = parseFloat(sc.priceFactor)||1;
+    var off = (window._synthOffsets && window._synthOffsets[sym] !== undefined) ? window._synthOffsets[sym] : (parseFloat(sc.priceOffset)||0);
+    var a = src.h*f+off, b = src.l*f+off;
+    return { h: Math.max(a,b), l: Math.min(a,b) };
+  }catch(e){ return null; }
 }
 setTimeout(_txHLCrypto, 4000); setInterval(_txHLCrypto, 60000);
 function _txHLTick(){
   try{
     if(typeof curSym==='undefined' || !curSym) return;
-    var hl = window._txHL[curSym];
+    var hl = _txHLFor(curSym);
     var p = (typeof prices!=='undefined') ? prices[curSym] : null;
     if(hl && p && p.price>0 && !p._seed){ if(p.price>hl.h) hl.h=p.price; if(p.price<hl.l) hl.l=p.price; }
     var en = (typeof _curLang!=='undefined' && _curLang==='en');
@@ -4460,7 +4535,7 @@ function _txHLMarketWatch(){
     var en = (typeof _curLang!=='undefined' && _curLang==='en');
     var LP = en?'L ':'D ', HP = en?'H ':'Y ';
     Object.keys(MW_MAP).forEach(function(sym){
-      var hl = window._txHL[sym]; if(!hl) return;
+      var hl = _txHLFor(sym); if(!hl) return;
       var p = (typeof prices!=='undefined') ? prices[sym] : null;
       if(p && p.price>0 && !p._seed){ if(p.price>hl.h) hl.h=p.price; if(p.price<hl.l) hl.l=p.price; }
       var dec = (MW_MAP[sym].decimals!=null) ? MW_MAP[sym].decimals : 2;
@@ -4560,7 +4635,7 @@ function placeOrder(side) {
     };
     pendingOrders.push(_pord);
     localStorage.setItem('tx_pending', JSON.stringify(pendingOrders));
-    if(typeof fbSaveUserData==='function') fbSaveUserData(_cu.id, {pendingOrders: pendingOrders});
+    _txPendingTx(function(arr){ arr.push(_pord); return arr; });
     renderPendingOrders();
     { var _ovL=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null); showToast(_ovL?_ovL.orderPlacedTitle:'Emir Verildi ✓', ordType.replace('_',' ').toUpperCase()+' @ '+lp+' ('+qty+' lot)'); }
     var _lpEl=document.getElementById('limitPrice'); if(_lpEl) _lpEl.value='';
@@ -4747,6 +4822,28 @@ function placeOrder(side) {
 }
 
 
+// ── İstemci SL/TP yedeği (2026-11-03) ──
+var TX_SLTP_HOLD_MS = 3000;
+var _txSlTpSeen = {};
+function _txSlTpHit(pos, p) {
+  if(!pos.tp && !pos.sl) return null;
+  // Gerçek orta fiyat: override varsa o (müşterinin gördüğü), yoksa son gerçek tick (_txBase), yoksa ekrandaki
+  var mid = (typeof _txAdminOverrides!=='undefined' && _txAdminOverrides[pos.sym] > 0) ? _txAdminOverrides[pos.sym]
+          : ((window._txBase && window._txBase[pos.sym] > 0) ? window._txBase[pos.sym] : p.price);
+  var half = (p.ask && p.bid && p.ask > p.bid) ? (p.ask - p.bid)/2 : 0;
+  var c = pos.side==='buy' ? mid - half : mid + half;
+  var hit = null;
+  if(pos.tp && ((pos.side==='buy'&&c>=pos.tp)||(pos.side==='sell'&&c<=pos.tp))) hit = 'tp';
+  else if(pos.sl && ((pos.side==='buy'&&c<=pos.sl)||(pos.side==='sell'&&c>=pos.sl))) hit = 'sl';
+  var k = String(pos.id);
+  if(!hit){ delete _txSlTpSeen[k]; return null; }
+  var now = Date.now();
+  if(!_txSlTpSeen[k] || _txSlTpSeen[k].h !== hit){ _txSlTpSeen[k] = {h:hit, t:now}; return null; }
+  if(now - _txSlTpSeen[k].t < TX_SLTP_HOLD_MS) return null;
+  delete _txSlTpSeen[k];
+  return hit;
+}
+
 // ── Pozisyon K/Z hücrelerini hızlı güncelle (DOM yeniden oluşturma yok) ──
 function txTickPositions() {
   if(!positions || !positions.length) return;
@@ -4759,9 +4856,11 @@ function txTickPositions() {
     var cs  = parseFloat(pos.contractSize)||1;
     var raw = _quoteToUsd(pos.sym, (pos.side==='buy' ? cur-pos.openPrice : pos.openPrice-cur) * (parseFloat(pos.qty)||0) * cs);
     var pnl = raw + (parseFloat(pos.swapTotal)||0);
-    // SL/TP kontrol
-    if(pos.tp && ((pos.side==='buy'&&cur>=pos.tp)||(pos.side==='sell'&&cur<=pos.tp))){ closePosition(pos.id,'tp'); needFullRender=true; return; }
-    if(pos.sl && ((pos.side==='buy'&&cur<=pos.sl)||(pos.side==='sell'&&cur>=pos.sl))){ closePosition(pos.id,'sl'); needFullRender=true; return; }
+    // SL/TP kontrol — ⚠️ 2026-11-03: ASIL tetikleyici sunucu (Railway risk motoru). Cihaz yalnız
+    // YEDEK: (1) ekrandaki görsel titreme değil son GERÇEK fiyat kullanılır, (2) seviye en az
+    // TX_SLTP_HOLD_MS boyunca aşılmış kalmalı — tek bir hatalı fiyat pozisyon kapatmasın.
+    var _hit = _txSlTpHit(pos, p);
+    if(_hit){ closePosition(pos.id, _hit); needFullRender=true; return; }
     // Güncel fiyat hücresi
     var curEl = document.querySelector('[data-cur="'+pos.id+'"]');
     if(curEl) curEl.textContent = '$'+fp(cur, pos.decimals||2);
@@ -5325,7 +5424,15 @@ function updateAccount() {
 
 // Stop out kontrolünü updateAccount'tan ayırdık — hem oradan hem bağımsız interval'dan çağrılır.
 // Böylece fiyat tick'i gelmese / sekme arka planda olsa bile düzenli kontrol edilir.
+// ⚠️ 2026-11-03: TARAYICI STOP-OUT'U KAPATILDI.
+// Stop-out artık YALNIZ sunucuda (Railway köprüsündeki risk motoru + Cloud Functions yedeği).
+// Sebep: müşterinin cihazı bayat hesap ayarı ya da anlık bozuk fiyatla teminat seviyesini yanlış
+// hesaplayıp hatalı stop-out verebiliyordu (December #10006, 03.11.2026: 1:200 kaldıraç, %20 stop-out,
+// gerçek seviye ~%88 iken telefon kapattı). Sunucu her kararını kayda geçirir; tek ve tutarlı hesap.
+// Geri açmak için true yapılması yeterli.
+var TX_CLIENT_STOPOUT = false;
 function _checkStopOut(equity, marginUsed, marginLvl) {
+  if(!TX_CLIENT_STOPOUT) return;
   if(!Array.isArray(positions) || positions.length === 0) return;
   // ⚠️ 2026-07-24: ikinci savunma katmanı — fbListenUserData'da filtrelense bile,
   // stop-out kendi çalıştığı anda da bu oturumun az önce kapattığı bir ID'yi

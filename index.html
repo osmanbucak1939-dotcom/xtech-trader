@@ -4441,8 +4441,10 @@ function _txSlTpTick(){
     var pend = (typeof ordType!=='undefined' && ordType && ordType!=='market');
     [['ordSLInfo','ordSL','sl','ordQty','limitPrice'],['ordTPInfo','ordTP','tp','ordQty','limitPrice'],
      ['mSLInfo','mSL','sl','mLI','mLimitPrice'],['mTPInfo','mTP','tp','mLI','mLimitPrice']].forEach(function(r){
-      var box = document.getElementById(r[0]); if(!box || !box.offsetParent) return;
-      var lvl = parseFloat((document.getElementById(r[1])||{}).value);
+      // Not: kutu boşken CSS ile gizli — görünürlüğü kutuya değil GİRİŞ alanına göre kontrol et
+      var box = document.getElementById(r[0]); var inpEl = document.getElementById(r[1]);
+      if(!box || !inpEl || !inpEl.offsetParent) return;
+      var lvl = parseFloat(inpEl.value);
       var lot = parseFloat((document.getElementById(r[3])||{}).value) || 0.01;
       var lp  = pend ? parseFloat((document.getElementById(r[4])||{}).value) : 0;
       var c = _txSlTpCalc(r[2], lvl, lot, lp);

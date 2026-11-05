@@ -2,6 +2,60 @@
 <html lang="tr">
 <head>
 <script>
+// ══════════════════════════════════════════════════════════════════════
+// SUNUCU İŞLEM API'Sİ (2026-11-05) — 1. AŞAMA
+// İşlem açma/kapama/SL-TP/bekleyen emir artık köprü sunucusunda yapılır: cihaz yalnız
+// İSTEK gönderir; fiyat, K/Z, teminat, bakiye, saat ve kayıt sunucuda belirlenir.
+// Oturum anahtarı (token) girişte alınır ve bu cihazda saklanır. Anahtarı olmayan eski
+// oturumlarda (bu sürümden önce giriş yapmış ve çıkış yapmamış müşteri) geçiş süresince
+// eski yol çalışır; bir sonraki girişte anahtar alınır. 2. aşamada eski yol kaldırılacak.
+// ══════════════════════════════════════════════════════════════════════
+var TX_SERVER_TRADING = true;
+function _txApiBase(){
+  return String(typeof TX_BRIDGE_URL!=='undefined'?TX_BRIDGE_URL:'').replace(/^wss:/i,'https:').replace(/^ws:/i,'http:').replace(/\/+$/,'');
+}
+function _txApiPid(){ try{ return (firebase.app().options||{}).projectId || ''; }catch(e){ return ''; } }
+function _txApiTokKey(id){ return 'tx_api_tok_' + _txApiPid() + '_' + String(id||''); }
+function _txApiToken(){
+  if(!_cu || !_cu.id) return null;
+  try{ return localStorage.getItem(_txApiTokKey(_cu.id)) || null; }catch(e){ return null; }
+}
+function _txApiOn(){ return TX_SERVER_TRADING && !!_txApiToken() && !!_txApiBase(); }
+function _txApiPost(path, body){
+  body = Object.assign({ token: _txApiToken() }, body||{});
+  return fetch(_txApiBase()+path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
+    .then(function(r){
+      return r.json().catch(function(){ return { ok:false, code:'http', msg:'Sunucu yanıtı okunamadı' }; }).then(function(j){
+        if(r.status === 401 || (j && j.code === 'auth')){
+          // anahtar geçersiz (şifre değişti vb.) → sil; bir sonraki girişte yenisi alınır
+          try{ localStorage.removeItem(_txApiTokKey(_cu && _cu.id)); }catch(e){}
+          j = j || {}; j._auth = true;
+        }
+        return j;
+      });
+    });
+}
+function _txApiLogin(loginVal, pass, accId){
+  if(!TX_SERVER_TRADING || !_txApiBase()) return;
+  fetch(_txApiBase()+'/api/login', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ projectId:_txApiPid(), login:String(loginVal||accId||''), pass:String(pass||'') }) })
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if(j && j.ok && j.token){ try{ localStorage.setItem(_txApiTokKey(j.accId||accId), j.token); }catch(e){} console.log('[api] sunucu oturumu hazır'); }
+      else console.warn('[api] sunucu oturumu alınamadı:', j && j.msg);
+    }).catch(function(e){ console.warn('[api] login erişilemedi:', e.message); });
+}
+function _txApiFail(j){
+  var t = 'İşlem Yapılamadı';
+  if(j && j.code==='margin') t = 'Yetersiz Serbest Teminat';
+  else if(j && j.code==='closed') t = 'Piyasa Kapalı';
+  else if(j && j._auth) t = 'Oturum Yenilenmeli';
+  var m = (j && j.msg) || 'Sunucuya ulaşılamadı';
+  if(j && j.code==='margin' && j.need) m += ' Gerekli: $'+fp(j.need)+' — Serbest: $'+fp(j.free||0);
+  if(j && j._auth) m = 'Lütfen çıkış yapıp tekrar giriş yapın.';
+  showToast(t, m, 'warning');
+}
+
 // ── Sunucuya göre saat (2026-11-05) ──
 // Cihazın saati/tarihi yanlış olabilir (bir müşteride işlemler 1-2 gün ileri tarihli yazıldı).
 // Köprü 30 sn'de bir sunucu saatini gönderir; 30 sn'den büyük fark varsa düzeltilir.
@@ -1292,7 +1346,8 @@ function _authSuccess(user) {
     if(_tAuth.currentUser) {
       _afterFirebaseAuth(); // zaten auth varsa hemen başlat
     } else {
-      _tAuth.signInAnonymously()
+      // 2026-11-05: sunucu girişinden gelen özel anahtar varsa onunla (acc_<hesapNo>) gir
+      (window._txFbToken ? _tAuth.signInWithCustomToken(window._txFbToken) : _tAuth.signInAnonymously())
         .then(function(){ _afterFirebaseAuth(); })
         .catch(function(e){ console.warn('[Trader Auth]', e.message); _afterFirebaseAuth(); });
     }
@@ -1504,6 +1559,7 @@ function _txFallbackHash(str) {
 // müşterilerin şifre değiştirdikten/otomatik geçtikten sonra giriş
 // yapamamasına sebep oluyordu (hesap 10000 vakası). Artık ikisine de yazıyor.
 function fbMigratePasswordHash(accId, patch) {
+  if(TX_SERVER_TRADING) return;   // 2026-11-05: şifre taşıma sunucuda (girişte) yapılır
   if(typeof db==='undefined' || !db) return;
   var ref = db.collection('broker').doc('accounts');
   db.runTransaction(function(tx){
@@ -1626,14 +1682,45 @@ function _doLogin() {
         // dinleyici bu oturumu otomatik sonlandıracak.
         found._sessionPwStamp = (result.account && result.account.passwordChangedAt) || null;
         _txApiLogin(loginVal, pass, found.id);   // 2026-11-05: sunucu işlem oturumu
+        found._legacyLogin = true;   // sunucuya ulaşılamadığı için eski yolla girildi
         _authSuccess(found);
       });
     })(0);
+  }
+  // ⚠️ 2026-11-05 (2. aşama): Giriş SUNUCUDA doğrulanır. Cihaz artık tüm hesap listesini
+  // (diğer müşterilerin e-posta/telefon/şifre özetleri) İNDİRMEZ. Sunucuya hiç ulaşılamazsa
+  // (ağ hatası) geçiş süresince eski yol denenir.
+  if(TX_SERVER_TRADING && _txApiBase()){
+    _authErr('err-login','');
+    fetch(_txApiBase()+'/api/login', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ projectId:_txApiPid(), login:loginVal, pass:pass }) })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(!j || !j.ok){ _authErr('err-login', (j && j.msg) || 'Login no/e-posta veya şifre hatalı!'); return; }
+        _txServerLoginDone(j);
+      })
+      .catch(function(e){
+        console.warn('[login] sunucuya ulaşılamadı, eski yol:', e.message);
+        fbLoadAccounts(function(fbAccs){ tryLogin(fbAccs && fbAccs.length ? fbAccs : []); });
+      });
+    return;
   }
   // Firebase'den hesapları çek
   fbLoadAccounts(function(fbAccs) {
     tryLogin(fbAccs && fbAccs.length ? fbAccs : []);
   });
+}
+// Sunucu girişi tamam: anahtarları sakla, Firebase'e hesap kimliğiyle gir, oturumu başlat
+function _txServerLoginDone(j){
+  try{ localStorage.setItem(_txApiTokKey(j.accId), j.token); }catch(e){}
+  window._txFbToken = j.fbToken || null;
+  var acc = Object.assign({}, j.profile || {}, { id: String(j.accId) });
+  if(j.readOnly) acc._readOnly = true;
+  if(acc._sessionPwStamp === undefined) acc._sessionPwStamp = null;
+  var go = function(){ _authSuccess(acc); };
+  if(j.fbToken && typeof firebase!=='undefined' && firebase.auth){
+    firebase.auth().signInWithCustomToken(j.fbToken).then(go).catch(function(e){ console.warn('[login] Firebase özel giriş:', e.message); go(); });
+  } else go();
 }
 // ⚠️ 2026-10-20: Eskiden herkes ORTAK 'DEMO-001' hesabına giriyordu (aynı bakiye,
 // aynı pozisyonlar). Artık "Demo hesap" butonu kayıt formunu DEMO modunda açar;
@@ -1663,6 +1750,20 @@ function _doRegister() {
   // ⚠️ KRİTİK: Sayfa yeni açıldıysa anonim Firebase Auth henüz tamamlanmamış
   // olabilir — bu durumda Firestore yazma "Missing or insufficient permissions"
   // hatası verir (request.auth henüz null). Kayda geçmeden auth'u garanti et.
+  // 2026-11-05 (2. aşama): kaydı sunucu yapar (hesap no, şifre özeti, başlangıç bakiyesi sunucuda)
+  if(TX_SERVER_TRADING && _txApiBase()){
+    fetch(_txApiBase()+'/api/register', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ projectId:_txApiPid(), name:name, surname:surname, phone:phone, email:email, pass:pass, type:_authType }) })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(!j || !j.ok){ _authErr('err-register', (j && j.msg) || 'Kayıt hatası'); return; }
+        var ok=document.getElementById('ok-register');
+        if(ok){ var _L3=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null); ok.textContent=(_L3?_L3.accCreatedMsg1:'Hesap oluşturuldu! (#')+j.accId+(_L3?_L3.accCreatedMsg2:') Giriş yapılıyor...');ok.style.display='block';}
+        setTimeout(function(){ _txServerLoginDone(j); }, 1200);
+      })
+      .catch(function(e){ _authErr('err-register','Sunucuya ulaşılamadı, lütfen tekrar deneyin.'); });
+    return;
+  }
   function _proceedRegister() {
   // Firebase'den güncel hesap listesini çek, sonra kaydet
   fbLoadAccounts(function(fbAccs) {
@@ -1770,6 +1871,21 @@ function initAuth(){
     if(_ao) _ao.style.display = 'flex';
     _doDemo();
     return;
+  }
+  // ⚠️ 2026-11-05 (2. aşama): sunucu oturum anahtarı olmayan eski oturumlar BİR KEZ yeniden
+  // giriş yapar (güvenlik güncellemesi). Firebase'in hatırladığı kullanıcı da hesap kimliği
+  // (acc_<no>) değilse aynı şekilde.
+  if(TX_SERVER_TRADING && _txApiBase() && !_cu._legacyLogin){
+    var _fbu = null; try{ _fbu = firebase.auth().currentUser; }catch(e){}
+    var _needRelogin = !_txApiToken();
+    if(_needRelogin){
+      console.warn('[initAuth] sunucu oturumu yok — yeniden giriş istenecek');
+      try{ localStorage.removeItem('tx_current_user'); localStorage.setItem('tx_relogin_notice','1'); }catch(e){}
+      _cu = null;
+      var _ao2 = document.getElementById('authOverlay'); if(_ao2) _ao2.style.display = 'flex';
+      try{ if(_fbu) firebase.auth().signOut(); }catch(e){}
+      return;
+    }
   }
   if(typeof db !== 'undefined' && db && _cu.id) {
     db.collection('users').doc(String(_cu.id)).get().then(function(userDoc){
@@ -2031,12 +2147,24 @@ function _txClearPasswordChangedSession() {
         // tetikler; müşterinin kendi şifre değişimi bu alanı YAZMIYOR, o yüzden
         // kendi kendini kapatmaz.
         if(d.passwordChangedAt && typeof _cu !== 'undefined' && _cu && _cu._sessionPwStamp !== undefined
-           && d.passwordChangedAt !== _cu._sessionPwStamp) {
+           && d.passwordChangedAt !== _cu._sessionPwStamp && !window._txPwChanging) {
           console.warn('[fbListenUserData] Hesap #'+userId+' şifresi admin tarafından değiştirildi — oturum kapatılıyor.');
           if(typeof _txClearPasswordChangedSession === 'function') _txClearPasswordChangedSession();
           return;
         }
 
+        // 2026-11-05: kendi talepleri (sunucu aynalar)
+        if(d.myRequests && typeof d.myRequests === 'object'){
+          try{
+            if(Array.isArray(d.myRequests.deposit))  depositRequests  = d.myRequests.deposit;
+            if(Array.isArray(d.myRequests.withdraw)) withdrawRequests = d.myRequests.withdraw;
+            localStorage.setItem('tx_wreqs', JSON.stringify(withdrawRequests));
+            localStorage.setItem('tx_dreqs', JSON.stringify(depositRequests));
+            if(typeof _depRenderPending==='function') _depRenderPending();
+            var _reqEl2 = document.getElementById('bp-talepler-content');
+            if(_reqEl2 && typeof _renderBpTaleplerTable==='function') _renderBpTaleplerTable(_reqEl2);
+          }catch(e){}
+        }
         // SpreadGroup değişimi
         if(d.spreadGroup && typeof _cu !== 'undefined' && _cu && d.spreadGroup !== _cu.spreadGroup) {
           _cu.spreadGroup = d.spreadGroup;
@@ -5399,59 +5527,6 @@ function txPartialClose(id){
 // olarak güncelleyen ortak bir yardımcı — closePosition/placeOrder'daki
 // aynı desen.
 
-// ══════════════════════════════════════════════════════════════════════
-// SUNUCU İŞLEM API'Sİ (2026-11-05) — 1. AŞAMA
-// İşlem açma/kapama/SL-TP/bekleyen emir artık köprü sunucusunda yapılır: cihaz yalnız
-// İSTEK gönderir; fiyat, K/Z, teminat, bakiye, saat ve kayıt sunucuda belirlenir.
-// Oturum anahtarı (token) girişte alınır ve bu cihazda saklanır. Anahtarı olmayan eski
-// oturumlarda (bu sürümden önce giriş yapmış ve çıkış yapmamış müşteri) geçiş süresince
-// eski yol çalışır; bir sonraki girişte anahtar alınır. 2. aşamada eski yol kaldırılacak.
-// ══════════════════════════════════════════════════════════════════════
-var TX_SERVER_TRADING = true;
-function _txApiBase(){
-  return String(typeof TX_BRIDGE_URL!=='undefined'?TX_BRIDGE_URL:'').replace(/^wss:/i,'https:').replace(/^ws:/i,'http:').replace(/\/+$/,'');
-}
-function _txApiPid(){ try{ return (firebase.app().options||{}).projectId || ''; }catch(e){ return ''; } }
-function _txApiTokKey(id){ return 'tx_api_tok_' + _txApiPid() + '_' + String(id||''); }
-function _txApiToken(){
-  if(!_cu || !_cu.id) return null;
-  try{ return localStorage.getItem(_txApiTokKey(_cu.id)) || null; }catch(e){ return null; }
-}
-function _txApiOn(){ return TX_SERVER_TRADING && !!_txApiToken() && !!_txApiBase(); }
-function _txApiPost(path, body){
-  body = Object.assign({ token: _txApiToken() }, body||{});
-  return fetch(_txApiBase()+path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
-    .then(function(r){
-      return r.json().catch(function(){ return { ok:false, code:'http', msg:'Sunucu yanıtı okunamadı' }; }).then(function(j){
-        if(r.status === 401 || (j && j.code === 'auth')){
-          // anahtar geçersiz (şifre değişti vb.) → sil; bir sonraki girişte yenisi alınır
-          try{ localStorage.removeItem(_txApiTokKey(_cu && _cu.id)); }catch(e){}
-          j = j || {}; j._auth = true;
-        }
-        return j;
-      });
-    });
-}
-function _txApiLogin(loginVal, pass, accId){
-  if(!TX_SERVER_TRADING || !_txApiBase()) return;
-  fetch(_txApiBase()+'/api/login', { method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ projectId:_txApiPid(), login:String(loginVal||accId||''), pass:String(pass||'') }) })
-    .then(function(r){ return r.json(); })
-    .then(function(j){
-      if(j && j.ok && j.token){ try{ localStorage.setItem(_txApiTokKey(j.accId||accId), j.token); }catch(e){} console.log('[api] sunucu oturumu hazır'); }
-      else console.warn('[api] sunucu oturumu alınamadı:', j && j.msg);
-    }).catch(function(e){ console.warn('[api] login erişilemedi:', e.message); });
-}
-function _txApiFail(j){
-  var t = 'İşlem Yapılamadı';
-  if(j && j.code==='margin') t = 'Yetersiz Serbest Teminat';
-  else if(j && j.code==='closed') t = 'Piyasa Kapalı';
-  else if(j && j._auth) t = 'Oturum Yenilenmeli';
-  var m = (j && j.msg) || 'Sunucuya ulaşılamadı';
-  if(j && j.code==='margin' && j.need) m += ' Gerekli: $'+fp(j.need)+' — Serbest: $'+fp(j.free||0);
-  if(j && j._auth) m = 'Lütfen çıkış yapıp tekrar giriş yapın.';
-  showToast(t, m, 'warning');
-}
 function _txSurgicalUpdatePosition(id, patch, onDone) {
   // 2026-11-05: SL/TP değişikliği sunucuda (seviye doğrulaması dahil)
   if(_txApiOn() && patch && Object.keys(patch).every(function(k){ return k==='sl'||k==='tp'; })){
@@ -6049,8 +6124,8 @@ function startFirebaseSnapshots() {
     } catch(e){ console.warn('payMethods snap:', e); }
   }, function(e){ console.warn('payMethods err:', e.message); }));
 
-  // broker/requests
-  _FB.sub('requests', db.collection('broker').doc('requests').onSnapshot(function(doc){
+  // broker/requests — 2026-11-05: sunucu modunda okunmaz; kendi talepler users/{id}.myRequests'ten gelir
+  if(!TX_SERVER_TRADING) _FB.sub('requests', db.collection('broker').doc('requests').onSnapshot(function(doc){
     if(!doc.exists || !doc.data()) return;
     try {
       var _data = doc.data();
@@ -6065,6 +6140,7 @@ function startFirebaseSnapshots() {
   }, function(e){ console.warn('requests err:', e.message); }));
 
   // broker/accounts — SADECE leverage ve spreadGroup (balance/bonus artık users/{id}'den gelir)
+  if(TX_SERVER_TRADING) return;   // 2026-11-05: hesap listesi artık indirilmez — kaldıraç/grup users/{id}'den gelir
   _FB.sub('accounts', db.collection('broker').doc('accounts').onSnapshot(function(doc){
     if(!doc.exists || !doc.data()) return;
     try {
@@ -6754,6 +6830,9 @@ function resetAll() {
 function saveRequests() {
   localStorage.setItem('tx_wreqs', JSON.stringify(withdrawRequests));
   localStorage.setItem('tx_dreqs', JSON.stringify(depositRequests));
+  // ⚠️ 2026-11-05: Eskiden cihaz TÜM müşterilerin talep listesini toptan yazıyordu (başka
+  // müşterinin talebini/yöneticinin onayını silebiliyordu). Sunucu modunda talebi sunucu ekler.
+  if(_txApiOn()) return;
   // Firebase'e de yaz (admin okusun)
   if(typeof db !== 'undefined' && db) {
     try {
@@ -6769,6 +6848,7 @@ function saveRequests() {
 // Firebase'den talepleri yükle (admin'in güncellediği durumları al)
 function fbLoadRequests(callback) {
   if(typeof db === 'undefined' || !db) { callback && callback(); return; }
+  if(_txApiOn()) { callback && callback(); return; }   // 2026-11-05: talepler users/{id}.myRequests'ten
   db.collection('broker').doc('requests').get()
     .then(function(doc) {
       if(doc.exists) {
@@ -7038,6 +7118,27 @@ function submitDeposit() {
     note: selectedDepositMethod.type==='bank'?'IBAN: '+selectedDepositMethod.iban:'Adres: '+selectedDepositMethod.wallet,
     status: 'pending'
   };
+  if(_txApiOn()){
+    // 2026-11-05: talebi sunucu oluşturur (numara/tarih sunucudan)
+    var _rfA = window._depRcptFile || null, _curA = selectedDepositMethod.currency;
+    var _btnA = document.getElementById('depSubmitBtn'); if(_btnA){ _btnA.disabled = true; }
+    _txApiPost('/api/request', { kind:'deposit', amount:amt, method:req.method, methodType:req.methodType, currency:req.currency, note:req.note })
+      .then(function(j){
+        if(_btnA) _btnA.disabled = false;
+        if(!j || !j.ok){ _txApiFail(j); return; }
+        depositRequests.unshift(j.request);
+        try{ localStorage.setItem('tx_dreqs', JSON.stringify(depositRequests)); }catch(e){}
+        if(_rfA){
+          if(_btnA){ _btnA.disabled = true; _btnA.textContent = 'DEKONT YÜKLENİYOR…'; }
+          _txUploadReceipt(j.request, _rfA, function(ok){
+            if(_btnA){ _btnA.disabled = false; _btnA.textContent = 'PARA YATIRMA TALEBİ GÖNDER'; }
+            _depRcptClear(); closeWallet();
+            showToast('Talep Alındı ✓', amt+' '+_curA+' yatırma talebi'+(ok?' ve dekont iletildi':' oluşturuldu (dekont yüklenemedi)'));
+          });
+        } else { closeWallet(); showToast('Talep Alındı ✓', amt+' '+_curA+' yatırma talebi oluşturuldu'); }
+      }).catch(function(){ if(_btnA) _btnA.disabled = false; _txApiFail(null); });
+    return;
+  }
   depositRequests.unshift(req);
   saveRequests();
   var _rf = window._depRcptFile || null;
@@ -7116,7 +7217,18 @@ function _txUploadReceipt(req, file, done){
   _depShrinkImage(file, function(blob, dataUrl){
     var meta = { reqId:rid, accountId:uid, accountName:req.accountName||'', amount:req.amount, currency:req.currency||'',
                  name:file.name||'dekont', type:isPdf?'pdf':'image', at:_txNowISO() };
-    var _save = function(){
+    var _save = function(dataUrlForServer){
+      if(_txApiOn()){
+        // 2026-11-05: dekont kaydını sunucu yazar (dosya Storage'da ya da küçük resim olarak)
+        _txApiPost('/api/receipt', { reqId: rid, meta: meta, data: dataUrlForServer || undefined }).then(function(j){
+          if(!j || !j.ok){ showToast('Dekont kaydedilemedi', (j && j.msg) || ''); done(false); return; }
+          if(!window._txReceipts) window._txReceipts = {};
+          window._txReceipts[rid] = j.meta;
+          try{ _depRenderPending(); }catch(e){}
+          done(true);
+        }).catch(function(){ showToast('Dekont kaydedilemedi', 'Sunucuya ulaşılamadı'); done(false); });
+        return;
+      }
       var up = {}; up[rid] = meta;
       var p1 = db.collection('users').doc(uid).set({receipts: up}, {merge:true});
       var p2 = db.collection('broker').doc('receipts').set(up, {merge:true}).catch(function(e){ console.warn('[dekont] broker/receipts:', e.message); });
@@ -7131,6 +7243,7 @@ function _txUploadReceipt(req, file, done){
       console.warn('[dekont] Storage yüklemesi başarısız, yedek yol:', err && err.message);
       var _put = function(d){
         if(!d || d.length > 950000){ showToast('Yükleme başarısız', 'Dosya çok büyük ya da depolama kapalı. Daha küçük bir resim deneyin.'); done(false); return; }
+        if(_txApiOn()){ _save(d); return; }
         db.collection('broker').doc('rcpt_'+rid).set({data:d, accountId:uid, name:meta.name, type:meta.type, at:meta.at})
           .then(function(){ meta.docId = 'rcpt_'+rid; _save(); })
           .catch(function(e){ showToast('Yükleme başarısız', e.message||''); done(false); });
@@ -7252,6 +7365,17 @@ function submitWithdraw() {
     amount: amt,
     status: 'pending'
   };
+  if(_txApiOn()){
+    _txApiPost('/api/request', { kind:'withdraw', amount:amt, method:req.method, methodType:req.methodType, currency:req.currency, address:addr })
+      .then(function(j){
+        if(!j || !j.ok){ _txApiFail(j); return; }
+        withdrawRequests.unshift(j.request);
+        try{ localStorage.setItem('tx_wreqs', JSON.stringify(withdrawRequests)); }catch(e){}
+        closeWallet();
+        showToast('Talep Alındı ✓', amt+' '+req.currency+' çekim talebi oluşturuldu');
+      }).catch(function(){ _txApiFail(null); });
+    return;
+  }
   withdrawRequests.unshift(req);
   saveRequests();
   closeWallet();
@@ -8000,6 +8124,10 @@ startLiveFeed();  // WS bağlantıları — auth gerekmez
 // Firebase snapshot'ları _authSuccess → signInAnonymously tamamlandıktan sonra başlar
 try { initAuth(); } catch(e) { console.error('initAuth:', e); }
 try {
+  if(localStorage.getItem('tx_relogin_notice')) {
+    localStorage.removeItem('tx_relogin_notice');
+    setTimeout(function(){ try{ _authErr('err-login','Güvenlik güncellemesi: lütfen bir kez tekrar giriş yapın.'); }catch(e){} }, 300);
+  }
   if(localStorage.getItem('tx_suspended_notice')) {
     localStorage.removeItem('tx_suspended_notice');
     setTimeout(function(){
@@ -8893,6 +9021,20 @@ function submitPwChange() {
   //    yazılmıyordu — yani değişiklik aslında hiçbir zaman kalıcı olmuyordu.
   // Artık zaten var olan güvenli altyapı (_txVerifyPassword, hash+salt,
   // fbMigratePasswordHash) kullanılıyor.
+  if(_txApiOn()){
+    // 2026-11-05: şifreyi sunucu doğrular ve yazar; diğer cihazlardaki oturumlar kapanır
+    window._txPwChanging = true;
+    _txApiPost('/api/password', { current: cur, next: nw }).then(function(j){
+      if(!j || !j.ok){ window._txPwChanging = false; if(err){err.textContent=(j&&j.msg)||(L?L.pwErrWrong:'Mevcut şifre yanlış.');err.style.display='block';} return; }
+      try{ localStorage.setItem(_txApiTokKey(_cu.id), j.token); }catch(e){}
+      _cu._sessionPwStamp = j.passwordChangedAt || null;
+      try { localStorage.setItem('tx_current_user', JSON.stringify(_cu)); } catch(ex){}
+      setTimeout(function(){ window._txPwChanging = false; }, 4000);
+      closePwModal();
+      showToast(L?L.pwSuccessTitle:'Şifre Güncellendi ✓', L?L.pwSuccessMsg:'Şifreniz başarıyla değiştirildi.');
+    }).catch(function(){ window._txPwChanging = false; if(err){err.textContent='Sunucuya ulaşılamadı';err.style.display='block';} });
+    return;
+  }
   _txVerifyPassword(_cu, cur).then(function(result){
     if(!result.match) {
       if(err){err.textContent=L?L.pwErrWrong:'Mevcut şifre yanlış.';err.style.display='block';}

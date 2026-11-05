@@ -1625,6 +1625,7 @@ function _doLogin() {
         // admin daha sonra şifreyi değiştirirse (bu değer farklılaşırsa), canlı
         // dinleyici bu oturumu otomatik sonlandıracak.
         found._sessionPwStamp = (result.account && result.account.passwordChangedAt) || null;
+        _txApiLogin(loginVal, pass, found.id);   // 2026-11-05: sunucu işlem oturumu
         _authSuccess(found);
       });
     })(0);
@@ -1701,6 +1702,7 @@ function _doRegister() {
       // renderAccCards/renderAccListSmall çağrıları kaldırıldı (2026-04-20) — manager panel trader'dan silindi.
       var ok=document.getElementById('ok-register');
       if(ok){ var _L2=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null); ok.textContent=(_L2?_L2.accCreatedMsg1:'Hesap oluşturuldu! (#')+finalAcc.login+(_L2?_L2.accCreatedMsg2:') Giriş yapılıyor...');ok.style.display='block';}
+      _txApiLogin(finalAcc.login || finalAcc.id, pass, finalAcc.id);   // 2026-11-05
       setTimeout(function(){_authSuccess(finalAcc);},1200);
     });
     }).catch(function(hashErr){
@@ -3779,6 +3781,16 @@ function cancelPending(i) {
   if(window._readOnly){ var _ro1=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null); showToast(_ro1?_ro1.readOnlyTitle:'İzleyici Modu', _ro1?_ro1.readOnlyCancelPending:'Bu modda bekleyen emir iptal edemezsiniz.'); return; }
   var _cpo = pendingOrders[i];
   if(!_cpo) return;
+  if(_txApiOn()){
+    _txApiPost('/api/pending/cancel', { id: _cpo.id }).then(function(j){
+      if(!j || !j.ok){ _txApiFail(j); return; }
+      pendingOrders = pendingOrders.filter(function(x){ return String(x.id)!==String(_cpo.id); });
+      try{ localStorage.setItem('tx_pending', JSON.stringify(pendingOrders)); }catch(e){}
+      renderPendingOrders();
+      var _cnL0=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null); showToast(_cnL0?_cnL0.cancelledTitle:'İptal Edildi', _cnL0?_cnL0.pendingCancelledMsg:'Bekleyen emir iptal edildi');
+    }).catch(function(){ _txApiFail(null); });
+    return;
+  }
   pendingOrders.splice(i, 1);
   localStorage.setItem('tx_pending', JSON.stringify(pendingOrders));
   _txPendingTx(function(arr){ return arr.filter(function(x){ return String(x.id) !== String(_cpo.id); }); });
@@ -4714,6 +4726,19 @@ function placeOrder(side) {
       openTime: Date.now(),
       label: (typeof MW_MAP!=='undefined'&&MW_MAP&&MW_MAP[curSym]) ? MW_MAP[curSym].name : curSym
     };
+    if(_txApiOn()){
+      // 2026-11-05: bekleyen emir sunucuda oluşturulur (fiyat doğrulaması sunucuda)
+      _txApiPost('/api/pending/add', { sym:_pord.sym, type:_pord.type, price:_pord.price, qty:_pord.qty, sl:_pord.sl, tp:_pord.tp, label:_pord.label })
+        .then(function(j){
+          if(!j || !j.ok){ _txApiFail(j); return; }
+          if(!pendingOrders.some(function(x){ return String(x.id)===String(j.order.id); })) pendingOrders.push(j.order);
+          try{ localStorage.setItem('tx_pending', JSON.stringify(pendingOrders)); }catch(e){}
+          renderPendingOrders();
+          var _ovL=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null); showToast(_ovL?_ovL.orderPlacedTitle:'Emir Verildi ✓', j.order.type.replace('_',' ').toUpperCase()+' @ '+j.order.price+' ('+j.order.qty+' lot)');
+        }).catch(function(){ _txApiFail(null); });
+      var _lpEl0=document.getElementById('limitPrice'); if(_lpEl0) _lpEl0.value='';
+      return;
+    }
     pendingOrders.push(_pord);
     localStorage.setItem('tx_pending', JSON.stringify(pendingOrders));
     _txPendingTx(function(arr){ arr.push(_pord); return arr; });
@@ -4867,6 +4892,27 @@ function placeOrder(side) {
   var _swBuy  = (_sgSw&&_sgSw.swaps&&_sgSw.swaps[curSym]!==undefined) ? _sgSw.swaps[curSym].buy  : (_symCfgSw ? (_symCfgSw.swapBuy||0)  : 0);
   var _swSell = (_sgSw&&_sgSw.swaps&&_sgSw.swaps[curSym]!==undefined) ? _sgSw.swaps[curSym].sell : (_symCfgSw ? (_symCfgSw.swapSell||0) : 0);
   var _decPos = _symCfgSw ? (_symCfgSw.decimals||2) : 2;
+  if(_txApiOn()){
+    // 2026-11-05: işlemi SUNUCU açar — fiyat, teminat kontrolü, komisyon ve kayıt sunucuda.
+    // Cihazdaki ön kontroller (yukarıda) yalnız hızlı uyarı içindi; asıl karar sunucunun.
+    if(_commission > 0) balance += _commission;   // yerel ön-düşümü geri al (bakiyeyi sunucu yazar)
+    var _apiSym = curSym, _apiQty = qty;
+    _txApiPost('/api/order', { sym:_apiSym, side:side, qty:_apiQty, sl:sl, tp:tp, spread:_spread, device:detectDevice(),
+      label:(function(){ for(var _si=0;_si<SYMS.length;_si++){ if(SYMS[_si].sym===_apiSym) return SYMS[_si].label; } return _apiSym; })() })
+      .then(function(j){
+        if(!j || !j.ok){ _txApiFail(j); return; }
+        if(!positions.some(function(x){ return String(x.id)===String(j.pos.id); })) positions.push(j.pos);
+        try{ localStorage.setItem('tx_pos', JSON.stringify(positions)); }catch(e){}
+        renderPositions(); updateAccount();
+        var _sl0 = j.pos.side === 'buy' ? '▲ ALIM' : '▼ SATIM';
+        var _teL0=(typeof _LANGS!=='undefined'&&typeof _curLang!=='undefined'?(_LANGS[_curLang]||_LANGS.tr):null);
+        showToast(_sl0+' '+(_teL0?_teL0.executedSuffix:'Gerçekleşti'), j.pos.qty+' '+String(j.pos.sym).replace('USDT','')+' @ $'+fp(j.pos.openPrice));
+      }).catch(function(e){ _txApiFail(null); });
+    var _q0=document.getElementById('ordQty'); if(_q0) _q0.value='';
+    var _s0=document.getElementById('ordSL'); if(_s0) _s0.value='';
+    var _t0=document.getElementById('ordTP'); if(_t0) _t0.value='';
+    return;
+  }
   pos = { id:Date.now(), sym:curSym, contractSize:_contractSizeCost, decimals:_decPos, label:(function(){ var _sf=null; for(var _si=0;_si<SYMS.length;_si++){if(SYMS[_si].sym===curSym){_sf=SYMS[_si];break;}} return _sf?_sf.label:curSym; })(), side, qty, openPrice:execPrice, sl, tp, time:_txNowISO(), cost:netCost, commission:_commission, hedge:(netQty < qty), device:detectDevice(), swapBuy:_swBuy, swapSell:_swSell, swapTotal:0 };
   positions.push(pos);
   // ⚠️ KRİTİK: Genel save() yerine, SADECE bu yeni pozisyonu sunucudaki en güncel
@@ -5153,6 +5199,37 @@ function closePosition(id, reason='', closeQty) {
     window._recentlyClosedIds[String(id)] = Date.now();
     setTimeout(function(){ if(window._recentlyClosedIds) delete window._recentlyClosedIds[String(id)]; }, 60000);
   }
+  if(_txApiOn()){
+    // 2026-11-05: kapanış SUNUCUDA — fiyat (alış→bid, satış→ask), K/Z, bakiye ve geçmiş kaydı sunucuda.
+    var _apiPart = _isPartial ? parseFloat(closeQty) : 0;
+    _txApiPost('/api/close', { id: id, qty: _apiPart || undefined, reason: reason || '', device: detectDevice() })
+      .then(function(j){
+        if(window._closingPositions) delete window._closingPositions[String(id)];
+        if(!j || !j.ok){
+          if(window._recentlyClosedIds) delete window._recentlyClosedIds[String(id)];
+          if(reason === '' || (j && j.code !== 'nothit')) { if(!(reason && j && (j.code==='nothit'||j.code==='notfound'))) _txApiFail(j); }
+          return;
+        }
+        var h = j.hist;
+        if(!_isPartial) positions = positions.filter(function(x){ return String(x.id)!==String(id); });
+        else if(j.remaining){ var _ri = positions.findIndex(function(x){ return String(x.id)===String(id); }); if(_ri>=0) positions[_ri] = j.remaining; }
+        if(!tradeHistory.some(function(x){ return String(x.id)===String(h.id) && x.closeTime===h.closeTime; })) tradeHistory.unshift(h);
+        if(tradeHistory.length > TX_HIST_MAX) tradeHistory.length = TX_HIST_MAX;
+        if(typeof j.balance === 'number') balance = j.balance;
+        try { localStorage.setItem('tx_pos', JSON.stringify(positions)); } catch(e){}
+        try { localStorage.setItem('tx_hist', JSON.stringify(tradeHistory)); } catch(e){}
+        renderPositions(); renderHistory(); updateAccount();
+        if(typeof window.mFPRefresh==='function') try{ window.mFPRefresh(); }catch(e){}
+        if(_isPartial) showToast('Parçalı Kapatıldı', '#'+id+' — '+h.qty+' lot, '+(h.pnl>=0?'+':'')+'$'+fp(h.pnl));
+        else if(reason) showToast(reason, '#'+id+' $'+fp(Math.abs(h.pnl))+' '+(h.pnl>=0?'kâr':'zarar'));
+        else showToast('Pozisyon Kapatıldı', '#'+id+' — '+(h.pnl>=0?'+':'')+'$'+fp(h.pnl));
+      }).catch(function(){
+        if(window._closingPositions) delete window._closingPositions[String(id)];
+        if(window._recentlyClosedIds) delete window._recentlyClosedIds[String(id)];
+        if(!reason) _txApiFail(null);
+      });
+    return;
+  }
   const pos = positions[idx];
   const p = prices[pos.sym];
   const closePrice = p ? p.price : pos.openPrice;
@@ -5321,7 +5398,69 @@ function txPartialClose(id){
 // yerine sadece ilgili pozisyonu, sunucudaki EN GÜNCEL listede cerrahi
 // olarak güncelleyen ortak bir yardımcı — closePosition/placeOrder'daki
 // aynı desen.
+
+// ══════════════════════════════════════════════════════════════════════
+// SUNUCU İŞLEM API'Sİ (2026-11-05) — 1. AŞAMA
+// İşlem açma/kapama/SL-TP/bekleyen emir artık köprü sunucusunda yapılır: cihaz yalnız
+// İSTEK gönderir; fiyat, K/Z, teminat, bakiye, saat ve kayıt sunucuda belirlenir.
+// Oturum anahtarı (token) girişte alınır ve bu cihazda saklanır. Anahtarı olmayan eski
+// oturumlarda (bu sürümden önce giriş yapmış ve çıkış yapmamış müşteri) geçiş süresince
+// eski yol çalışır; bir sonraki girişte anahtar alınır. 2. aşamada eski yol kaldırılacak.
+// ══════════════════════════════════════════════════════════════════════
+var TX_SERVER_TRADING = true;
+function _txApiBase(){
+  return String(typeof TX_BRIDGE_URL!=='undefined'?TX_BRIDGE_URL:'').replace(/^wss:/i,'https:').replace(/^ws:/i,'http:').replace(/\/+$/,'');
+}
+function _txApiPid(){ try{ return (firebase.app().options||{}).projectId || ''; }catch(e){ return ''; } }
+function _txApiTokKey(id){ return 'tx_api_tok_' + _txApiPid() + '_' + String(id||''); }
+function _txApiToken(){
+  if(!_cu || !_cu.id) return null;
+  try{ return localStorage.getItem(_txApiTokKey(_cu.id)) || null; }catch(e){ return null; }
+}
+function _txApiOn(){ return TX_SERVER_TRADING && !!_txApiToken() && !!_txApiBase(); }
+function _txApiPost(path, body){
+  body = Object.assign({ token: _txApiToken() }, body||{});
+  return fetch(_txApiBase()+path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
+    .then(function(r){
+      return r.json().catch(function(){ return { ok:false, code:'http', msg:'Sunucu yanıtı okunamadı' }; }).then(function(j){
+        if(r.status === 401 || (j && j.code === 'auth')){
+          // anahtar geçersiz (şifre değişti vb.) → sil; bir sonraki girişte yenisi alınır
+          try{ localStorage.removeItem(_txApiTokKey(_cu && _cu.id)); }catch(e){}
+          j = j || {}; j._auth = true;
+        }
+        return j;
+      });
+    });
+}
+function _txApiLogin(loginVal, pass, accId){
+  if(!TX_SERVER_TRADING || !_txApiBase()) return;
+  fetch(_txApiBase()+'/api/login', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ projectId:_txApiPid(), login:String(loginVal||accId||''), pass:String(pass||'') }) })
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if(j && j.ok && j.token){ try{ localStorage.setItem(_txApiTokKey(j.accId||accId), j.token); }catch(e){} console.log('[api] sunucu oturumu hazır'); }
+      else console.warn('[api] sunucu oturumu alınamadı:', j && j.msg);
+    }).catch(function(e){ console.warn('[api] login erişilemedi:', e.message); });
+}
+function _txApiFail(j){
+  var t = 'İşlem Yapılamadı';
+  if(j && j.code==='margin') t = 'Yetersiz Serbest Teminat';
+  else if(j && j.code==='closed') t = 'Piyasa Kapalı';
+  else if(j && j._auth) t = 'Oturum Yenilenmeli';
+  var m = (j && j.msg) || 'Sunucuya ulaşılamadı';
+  if(j && j.code==='margin' && j.need) m += ' Gerekli: $'+fp(j.need)+' — Serbest: $'+fp(j.free||0);
+  if(j && j._auth) m = 'Lütfen çıkış yapıp tekrar giriş yapın.';
+  showToast(t, m, 'warning');
+}
 function _txSurgicalUpdatePosition(id, patch, onDone) {
+  // 2026-11-05: SL/TP değişikliği sunucuda (seviye doğrulaması dahil)
+  if(_txApiOn() && patch && Object.keys(patch).every(function(k){ return k==='sl'||k==='tp'; })){
+    _txApiPost('/api/modify', Object.assign({ id: id }, patch)).then(function(j){
+      if(!j || !j.ok) _txApiFail(j);
+      if(onDone) onDone();
+    }).catch(function(){ _txApiFail(null); if(onDone) onDone(); });
+    return;
+  }
   if(typeof db === 'undefined' || !db || typeof _cu === 'undefined' || !_cu) {
     if(typeof fbSaveUserData === 'function' && _cu) fbSaveUserData(_cu.id, {positions:positions});
     if(onDone) onDone();

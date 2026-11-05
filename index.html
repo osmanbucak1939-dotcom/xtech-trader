@@ -4883,7 +4883,14 @@ function placeOrder(side) {
       return tx.get(_refPO).then(function(doc){
         var serverPos = (doc.exists && Array.isArray(doc.data().positions)) ? doc.data().positions.slice() : [];
         serverPos.push(pos);
-        tx.set(_refPO, { positions: serverPos, balance: balance, updatedAt: _txNowISO() }, { merge: true });
+        // ⚠️ 2026-11-05: Eskiden cihazın bildiği bakiye (balance) toptan yazılıyordu. Cihaz o an
+        // güncel değilse (sunucu stop-out/SL kapattı, yönetici para ekledi/çekti, başka cihazda
+        // işlem kapandı) bu değişiklikler SİLİNİYORDU. Artık sunucudaki bakiyeden yalnız komisyon düşülür.
+        var _sb = (doc.exists && typeof doc.data().balance === 'number') ? doc.data().balance : null;
+        var _patchPO = { positions: serverPos, updatedAt: _txNowISO() };
+        if(_sb !== null) { if(_commission > 0) _patchPO.balance = Math.round((_sb - _commission)*100)/100; }
+        else _patchPO.balance = balance;
+        tx.set(_refPO, _patchPO, { merge: true });
       });
     }).catch(function(e){ console.warn('[placeOrder] transaction:', e.message); });
     try { localStorage.setItem('tx_pos', JSON.stringify(positions)); } catch(e){}

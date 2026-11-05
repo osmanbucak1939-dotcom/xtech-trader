@@ -1,7 +1,14 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-<script>(function(){
+<script>
+// ── Sunucuya göre saat (2026-11-05) ──
+// Cihazın saati/tarihi yanlış olabilir (bir müşteride işlemler 1-2 gün ileri tarihli yazıldı).
+// Köprü 30 sn'de bir sunucu saatini gönderir; 30 sn'den büyük fark varsa düzeltilir.
+window._txClockSkew = window._txClockSkew || 0;
+function _txNow(){ return Date.now() + (window._txClockSkew || 0); }
+function _txNowISO(){ return new Date(_txNow()).toISOString(); }
+(function(){
   try {
     var t = localStorage.getItem('tx_theme');
     if (t === 'light' || t === 'dark') {
@@ -1382,7 +1389,7 @@ function _authSuccess(user) {
 
   window._txSetOffline = function _txSetOffline() {
     if(!_cu || !_cu.id || typeof db==='undefined' || !db) return;
-    var _now = new Date().toISOString();
+    var _now = _txNowISO();
     // users koleksiyonu — TEK gerçek kaynak. Admin buradan senkronize olur.
     db.collection('users').doc(String(_cu.id)).set({online:false, lastSeen:_now},{merge:true}).catch(function(){});
     // ⚠️ 2026-07-16 KRİTİK GÜVENLİK DÜZELTMESİ: broker/accounts'a yazan blok
@@ -1395,7 +1402,7 @@ function _authSuccess(user) {
   }
   function _txSendHeartbeat() {
     if(!_cu || !_cu.id || typeof db==='undefined' || !db) return;
-    var now = new Date().toISOString();
+    var now = _txNowISO();
     // users koleksiyonuna yaz - 30sn'de bir — TEK gerçek kaynak, admin buradan okur.
     db.collection('users').doc(String(_cu.id)).set({lastSeen:now, online:true},{merge:true}).catch(function(){});
     // ⚠️ 2026-07-16 KRİTİK GÜVENLİK DÜZELTMESİ: broker/accounts transaction'ı
@@ -1405,7 +1412,7 @@ function _authSuccess(user) {
   // Hemen bir kez ve sonra her 30 saniyede
   // Giriş anında lastLogin yaz
   if(typeof db!=='undefined' && db && typeof _cu!=='undefined' && _cu && _cu.id) {
-    var _loginNow = new Date().toISOString();
+    var _loginNow = _txNowISO();
     db.collection('users').doc(String(_cu.id)).set({lastLogin:_loginNow, online:true},{merge:true}).catch(function(){});
   }
   _txSendHeartbeat();
@@ -1902,7 +1909,7 @@ function _txClearPasswordChangedSession() {
           newAcc.id = String(nextId);
           newAcc.login = String(nextId);
           accs.push(newAcc);
-          tx.set(ref, { data: JSON.stringify(accs), updatedAt: new Date().toISOString() });
+          tx.set(ref, { data: JSON.stringify(accs), updatedAt: _txNowISO() });
           return newAcc;
         });
       }).then(function(acc) {
@@ -1920,7 +1927,7 @@ function _txClearPasswordChangedSession() {
           balance: _initBal, bonus: 0, finlog: [],
           positions: [], tradeHistory: [], pendingOrders: [],
           _balanceSource: 'system',
-          updatedAt: new Date().toISOString()
+          updatedAt: _txNowISO()
         }).catch(function(e){ console.warn('fbAddAccount users write:', e); });
         callback && callback(null, acc);
       }).catch(function(e) {
@@ -2873,7 +2880,7 @@ var save = () => {
   localStorage.setItem('tx_al', JSON.stringify(alarms));
   // Firebase'e kaydet (giriş yapmışsa)
   if(typeof _cu !== 'undefined' && _cu && _cu.id) {
-    var _saveTs = new Date().toISOString();
+    var _saveTs = _txNowISO();
     window._lastSyncAt = _saveTs; // kendi yazdığımızı tekrar okuyup ezmeyelim
     var _saveData = {
       positions: Array.isArray(positions) ? positions : [],
@@ -3764,7 +3771,7 @@ function _txPendingTx(mutate) {
       var cur = doc.exists ? doc.data().pendingOrders : [];
       if(typeof cur === 'string') { try { cur = JSON.parse(cur||'[]'); } catch(e){ cur = []; } }
       if(!Array.isArray(cur)) cur = [];
-      tx.set(ref, { pendingOrders: mutate(cur.slice()), updatedAt: new Date().toISOString() }, { merge: true });
+      tx.set(ref, { pendingOrders: mutate(cur.slice()), updatedAt: _txNowISO() }, { merge: true });
     });
   }).catch(function(e){ console.warn('[pending] transaction:', e.message); });
 }
@@ -4372,7 +4379,7 @@ function save() {
   try { localStorage.setItem('tx_hist', JSON.stringify(tradeHistory)); } catch(e){}
   // Firebase'e yaz - admin görsün, diğer cihazlar senkronize olsun
   if(typeof fbSaveUserData==='function' && typeof _cu!=='undefined' && _cu && _cu.id) {
-    var _now = new Date().toISOString();
+    var _now = _txNowISO();
     fbSaveUserData(_cu.id, {
       positions: positions,
       tradeHistory: tradeHistory.slice(0,TX_HIST_MAX),
@@ -4860,7 +4867,7 @@ function placeOrder(side) {
   var _swBuy  = (_sgSw&&_sgSw.swaps&&_sgSw.swaps[curSym]!==undefined) ? _sgSw.swaps[curSym].buy  : (_symCfgSw ? (_symCfgSw.swapBuy||0)  : 0);
   var _swSell = (_sgSw&&_sgSw.swaps&&_sgSw.swaps[curSym]!==undefined) ? _sgSw.swaps[curSym].sell : (_symCfgSw ? (_symCfgSw.swapSell||0) : 0);
   var _decPos = _symCfgSw ? (_symCfgSw.decimals||2) : 2;
-  pos = { id:Date.now(), sym:curSym, contractSize:_contractSizeCost, decimals:_decPos, label:(function(){ var _sf=null; for(var _si=0;_si<SYMS.length;_si++){if(SYMS[_si].sym===curSym){_sf=SYMS[_si];break;}} return _sf?_sf.label:curSym; })(), side, qty, openPrice:execPrice, sl, tp, time:new Date().toISOString(), cost:netCost, commission:_commission, hedge:(netQty < qty), device:detectDevice(), swapBuy:_swBuy, swapSell:_swSell, swapTotal:0 };
+  pos = { id:Date.now(), sym:curSym, contractSize:_contractSizeCost, decimals:_decPos, label:(function(){ var _sf=null; for(var _si=0;_si<SYMS.length;_si++){if(SYMS[_si].sym===curSym){_sf=SYMS[_si];break;}} return _sf?_sf.label:curSym; })(), side, qty, openPrice:execPrice, sl, tp, time:_txNowISO(), cost:netCost, commission:_commission, hedge:(netQty < qty), device:detectDevice(), swapBuy:_swBuy, swapSell:_swSell, swapTotal:0 };
   positions.push(pos);
   // ⚠️ KRİTİK: Genel save() yerine, SADECE bu yeni pozisyonu sunucudaki en güncel
   // listeye ekleyen bir transaction kullanıyoruz. Sebep: Cloud Function risk motoru
@@ -4876,7 +4883,7 @@ function placeOrder(side) {
       return tx.get(_refPO).then(function(doc){
         var serverPos = (doc.exists && Array.isArray(doc.data().positions)) ? doc.data().positions.slice() : [];
         serverPos.push(pos);
-        tx.set(_refPO, { positions: serverPos, balance: balance, updatedAt: new Date().toISOString() }, { merge: true });
+        tx.set(_refPO, { positions: serverPos, balance: balance, updatedAt: _txNowISO() }, { merge: true });
       });
     }).catch(function(e){ console.warn('[placeOrder] transaction:', e.message); });
     try { localStorage.setItem('tx_pos', JSON.stringify(positions)); } catch(e){}
@@ -5165,7 +5172,7 @@ function closePosition(id, reason='', closeQty) {
     pos.swapTotal = Math.round((_swapC - _swapPart)*100)/100;
     // Geçmişe parça kaydı — YENİ id (açık pozisyonla çakışmasın), izlenebilirlik için parentId
     const _histPart = { ...pos, id: Date.now(), parentId: pos.id, qty: _pq, cost: _costPart, swapTotal: _swapPart,
-      closePrice, pnl: pnlPart, closeTime: new Date().toISOString(), closeReason: reason||'parçalı' };
+      closePrice, pnl: pnlPart, closeTime: _txNowISO(), closeReason: reason||'parçalı' };
     tradeHistory.unshift(_histPart);
     if (tradeHistory.length > TX_HIST_MAX) tradeHistory.pop();
     try { localStorage.setItem('tx_pos', JSON.stringify(positions)); } catch(e){}
@@ -5217,7 +5224,7 @@ function closePosition(id, reason='', closeQty) {
   pnl += _swapC; // birikmiş swap balance'a dahil
   balance += pnl; // MT4/5 model: margin balance'a dahil değildi, sadece K/Z eklenir
   positions.splice(idx, 1);
-  const _histEntry = { ...pos, closePrice, pnl, swapTotal:_swapC, closeTime:new Date().toISOString(), closeReason:reason||'manuel' };
+  const _histEntry = { ...pos, closePrice, pnl, swapTotal:_swapC, closeTime:_txNowISO(), closeReason:reason||'manuel' };
   tradeHistory.unshift(_histEntry);
   if (tradeHistory.length > TX_HIST_MAX) tradeHistory.pop();
   // ⚠️ localStorage'ı güncelle ama save()'İ ÇAĞIRMA — save() tüm tradeHistory'yi
@@ -6607,7 +6614,7 @@ function saveRequests() {
       db.collection('broker').doc('requests').set({
         withdraw: JSON.stringify(withdrawRequests),
         deposit:  JSON.stringify(depositRequests),
-        updatedAt: new Date().toISOString()
+        updatedAt: _txNowISO()
       }).catch(function(e){ console.warn('saveRequests firebase:', e); });
     } catch(e){}
   }
@@ -6962,7 +6969,7 @@ function _txUploadReceipt(req, file, done){
   var isPdf = file.type==='application/pdf';
   _depShrinkImage(file, function(blob, dataUrl){
     var meta = { reqId:rid, accountId:uid, accountName:req.accountName||'', amount:req.amount, currency:req.currency||'',
-                 name:file.name||'dekont', type:isPdf?'pdf':'image', at:new Date().toISOString() };
+                 name:file.name||'dekont', type:isPdf?'pdf':'image', at:_txNowISO() };
     var _save = function(){
       var up = {}; up[rid] = meta;
       var p1 = db.collection('users').doc(uid).set({receipts: up}, {merge:true});
@@ -8319,6 +8326,8 @@ function _txStartBridge(){
     _txBrWs.onopen = function(){ console.log('[köprü] bağlandı'); };
     _txBrWs.onmessage = function(e){
       var msg; try { msg = JSON.parse(e.data); } catch(ex){ return; }
+      // 2026-11-05: sunucu saati — cihaz saati yanlışsa işlem saatleri sunucuya göre yazılır
+      if(msg.type === 'time' && msg.t > 0){ var _sk = msg.t - Date.now(); window._txClockSkew = (Math.abs(_sk) > 30000) ? _sk : 0; return; }
       if(msg.type === 'hl' && msg.d){ _txHLMerge(msg.d); return; }
       if(msg.type === 'snapshot' && msg.hl) _txHLMerge(msg.hl);
       if(msg.type === 'snapshot' && msg.prices){
@@ -8683,7 +8692,7 @@ function _kycOnFileSelected(e) {
     },
     function complete() {
       task.snapshot.ref.getDownloadURL().then(function(url){
-        var kycEntry = { status:'review', url:url, fileName:file.name, uploadedAt:new Date().toISOString() };
+        var kycEntry = { status:'review', url:url, fileName:file.name, uploadedAt:_txNowISO() };
         var patch = { kyc: {} }; patch.kyc[type] = kycEntry;
         if(!db || !_cu || !_cu.id) {
           console.error('KYC Firestore yazım hatası: db veya _cu.id yok', {db:!!db, cu:_cu});
@@ -11286,7 +11295,7 @@ function _txSessMin(hhmm) {
 function _txSessNow(tzOffsetHours, nowMs) {
   var tz = (tzOffsetHours === undefined || tzOffsetHours === null) ? 3 : parseFloat(tzOffsetHours);
   if (isNaN(tz)) tz = 3;
-  var d = new Date((nowMs || Date.now()) + tz * 3600000);
+  var d = new Date((nowMs || (typeof _txNow==='function' ? _txNow() : Date.now())) + tz * 3600000);   // cihaz saati yanlışsa sunucu saati
   var mm = d.getUTCMonth() + 1, dd = d.getUTCDate();
   return {
     day: d.getUTCDay(),

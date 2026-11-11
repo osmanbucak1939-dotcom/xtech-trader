@@ -27,9 +27,14 @@ function _txApiPost(path, body){
     .then(function(r){
       return r.json().catch(function(){ return { ok:false, code:'http', msg:'Sunucu yanıtı okunamadı' }; }).then(function(j){
         if(r.status === 401 || (j && j.code === 'auth')){
-          // anahtar geçersiz (şifre değişti vb.) → sil; bir sonraki girişte yenisi alınır
+          // anahtar geçersiz (şifre değişti, hesap durduruldu vb.) → sil ve oturumu KAPAT.
+          // ⚠️ 2026-11-11: eskiden anahtar silinip işlemler cihazdaki eski yola düşüyordu.
           try{ localStorage.removeItem(_txApiTokKey(_cu && _cu.id)); }catch(e){}
           j = j || {}; j._auth = true;
+          setTimeout(function(){
+            try{ localStorage.setItem('tx_relogin_notice','1'); }catch(e){}
+            if(typeof logoutUser==='function') logoutUser();
+          }, 1500);
         }
         return j;
       });
@@ -1304,6 +1309,12 @@ function scheduleSwap() {
 
 
 function _authSuccess(user) {
+  // 2026-11-11: başka bir hesabın verisi cihazda kaldıysa önce temizle
+  try{
+    var _owner = localStorage.getItem('tx_data_owner');
+    if(!user || !user.id || _owner !== String(user.id)) _txResetAccountState();
+    if(user && user.id) localStorage.setItem('tx_data_owner', String(user.id));
+  }catch(e){}
   _cu = user;
   try { localStorage.setItem('tx_current_user', JSON.stringify(user)); } catch(e){}
   // Firebase Auth — Firestore rules için request.auth != null gerekiyor
@@ -1343,8 +1354,15 @@ function _authSuccess(user) {
   }
   try {
     var _tAuth = firebase.auth();
-    if(_tAuth.currentUser) {
-      _afterFirebaseAuth(); // zaten auth varsa hemen başlat
+    var _cuUid = _tAuth.currentUser ? (_tAuth.currentUser.uid || '') : '';
+    // 2026-11-11: Firebase oturumu BAŞKA bir hesabın kimliğiyle (acc_<diğer>) açıksa kullanma
+    var _wrongAcc = /^acc_/.test(_cuUid) && _cuUid !== 'acc_' + String(user.id);
+    if(_tAuth.currentUser && !_wrongAcc && !(window._txFbToken && _tAuth.currentUser.isAnonymous)) {
+      _afterFirebaseAuth(); // zaten doğru kimlikle auth varsa hemen başlat
+    } else if(_wrongAcc && !window._txFbToken) {
+      _tAuth.signOut().then(function(){ return _tAuth.signInAnonymously(); })
+        .then(function(){ _afterFirebaseAuth(); })
+        .catch(function(e){ console.warn('[Trader Auth]', e.message); _afterFirebaseAuth(); });
     } else {
       // 2026-11-05: sunucu girişinden gelen özel anahtar varsa onunla (acc_<hesapNo>) gir
       (window._txFbToken ? _tAuth.signInWithCustomToken(window._txFbToken) : _tAuth.signInAnonymously())
@@ -1825,7 +1843,37 @@ function _doRegister() {
     _proceedRegister();
   }
 }
+
+// ══════════════════════════════════════════════════════════════════════
+// HESAP DEĞİŞİMİNDE VERİ TEMİZLİĞİ (2026-11-11)
+// Aynı cihazda bir hesaptan çıkıp başka hesaba girildiğinde, önceki hesabın bakiyesi,
+// pozisyonları, geçmişi, bekleyen emirleri ve talepleri hem ekranda hem cihaz hafızasında
+// kalıyordu → yeni hesapta (ör. Commerz #10124) BAŞKA HESABIN verisi görünüyordu. Ayrıca
+// Firebase oturumu önceki hesabın kimliğiyle açık kalıyordu.
+// ══════════════════════════════════════════════════════════════════════
+var _TX_ACC_KEYS = ['tx_pos','tx_hist','tx_pending','tx_wreqs','tx_dreqs','tx_pf','tx_al','tx_finlog','tx_bal'];
+function _txResetAccountState(){
+  try{ positions = []; }catch(e){}
+  try{ tradeHistory = []; }catch(e){}
+  try{ pendingOrders = []; }catch(e){}
+  try{ withdrawRequests = []; depositRequests = []; }catch(e){}
+  try{ finlog = []; }catch(e){}
+  try{ portfolio = []; alarms = []; }catch(e){}
+  try{ balance = 0; window._txBalLoaded = false; }catch(e){}
+  window._txReceipts = {};
+  window._recentlyClosedIds = {};
+  window._closingPositions = {};
+  window._txPendSeen = false;
+  _TX_ACC_KEYS.forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
+  try{ if(typeof renderPositions==='function') renderPositions(); }catch(e){}
+  try{ if(typeof renderHistory==='function') renderHistory(); }catch(e){}
+  try{ if(typeof renderPendingOrders==='function') renderPendingOrders(); }catch(e){}
+  try{ if(typeof updateAccount==='function') updateAccount(); }catch(e){}
+}
 function logoutUser() {
+  _txResetAccountState();
+  try{ localStorage.removeItem('tx_data_owner'); }catch(e){}
+  try{ if(typeof firebase!=='undefined' && firebase.auth) firebase.auth().signOut(); }catch(e){}
   if(typeof window._txSetOffline === 'function') window._txSetOffline();
   // Tüm Firebase listener'ları kapat
   _FB.unsubAll();

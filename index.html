@@ -2737,7 +2737,8 @@ function _txClearPasswordChangedSession() {
         <div class="bp-section" id="bp-hist">
           <table class="orders-table">
             <thead><tr>
-  <th onclick="sortHist('time')" style="cursor:pointer;user-select:none" data-lang="dateTimeLbl2">Zaman <span id="hsort-time" style="color:var(--buy);font-size:11px;">↓</span></th>
+  <th data-lang="histOpenTimeLbl" style="white-space:nowrap">Açılış Zamanı</th>
+  <th onclick="sortHist('time')" style="cursor:pointer;user-select:none;white-space:nowrap" data-lang="histCloseTimeLbl">Kapanış Zamanı <span id="hsort-time" style="color:var(--buy);font-size:11px;">↓</span></th>
   <th onclick="sortHist('sym')" style="cursor:pointer;user-select:none" data-lang="symbolLbl">Sembol <span id="hsort-sym" style="color:var(--faint);font-size:11px;">⇅</span></th>
   <th data-lang="sideLbl">Yön</th>
   <th onclick="sortHist('qty')" style="cursor:pointer;user-select:none" data-lang="amountLbl">Miktar <span id="hsort-qty" style="color:var(--faint);font-size:11px;">⇅</span></th>
@@ -2746,7 +2747,7 @@ function _txClearPasswordChangedSession() {
   <th data-lang="swap">Swap</th>
   <th onclick="sortHist('reason')" style="cursor:pointer;user-select:none" data-lang="reasonLbl">Sebep <span id="hsort-reason" style="color:var(--faint);font-size:11px;">⇅</span></th>
 </tr></thead>
-            <tbody id="histBody"><tr><td colspan="7" class="empty-msg" data-lang="noHistDesktop">İşlem geçmişi boş</td></tr></tbody>
+            <tbody id="histBody"><tr><td colspan="10" class="empty-msg" data-lang="noHistDesktop">İşlem geçmişi boş</td></tr></tbody>
           </table>
         </div>
         
@@ -5721,7 +5722,8 @@ function renderHistory() {
     var rl   = _reasonMap[r] || ('<span style="color:var(--muted);font-size:11px">' + r + '</span>');
     var pnlStyle = _histSortCol === 'pnl' ? 'font-weight:700;' : '';
     return '<tr>'
-      + '<td style="color:' + (_histSortCol==='time'?'var(--muted)':'var(--muted)') + ';font-size:11px;white-space:nowrap">' + (h.closeTime ? fmtDate(h.closeTime) : '—') + '</td>'
+      + '<td style="color:' + (_histSortCol==='time'?'var(--muted)':'var(--muted)') + ';font-size:11px;white-space:nowrap">' + ((h.openTime||h.time||h.openDate) ? fmtDate(h.openTime||h.time||h.openDate) : '—') + '</td>'
+      + '<td style="color:var(--muted);font-size:11px;white-space:nowrap">' + ((h.closeTime||h.closeDate) ? fmtDate(h.closeTime||h.closeDate) : '—') + '</td>'
       + '<td style="' + (_histSortCol==='sym'?'color:#fff;font-weight:600;':'') + '">' + (h.label||h.sym||'?') + '</td>'
       + '<td><span class="' + (h.side==='buy'?'badge-buy':'badge-sell') + '">' + (h.side==='buy'?'AL':'SAT') + '</span></td>'
       + '<td>' + h.qty + '</td>'
@@ -10873,7 +10875,7 @@ function mob(){ return _txIsMobile(); }
       balanceCaps:'BAKİYE', equityCaps:'VARLIK', marginCaps:'TEMİNAT', freeMarginCaps:'SERBEST TEMİNAT',
       openPnlShort:'AÇIK K/Z', marginLvlCaps:'TEMİNAT SEVİYESİ', noFinanceTxYet:'Henüz finansal işlem yok',
       sideLbl:'Yön', amountLbl:'Miktar', dateTimeLbl:'Tarih/Saat', closeLbl:'Kapat', pnlLbl:'K/Z',
-      dateTimeLbl2:'Zaman', pnlDollarLbl:'K/Z $', reasonLbl:'Sebep', noHistDesktop:'İşlem geçmişi boş',
+      dateTimeLbl2:'Zaman', histOpenTimeLbl:'Açılış Zamanı', histCloseTimeLbl:'Kapanış Zamanı', pnlDollarLbl:'K/Z $', reasonLbl:'Sebep', noHistDesktop:'İşlem geçmişi boş',
       typeLbl2:'Tür', actionLbl:'İşlem',
       catBist:'BİST', catForex:'PARİTELER (FOREX)', catCommodity:'EMTİALAR',
       catIndices:'ENDEKSLER', catCrypto:'KRİPTO', catStocks:'HİSSELER', catFav:'FAVORİLER',
@@ -10948,7 +10950,7 @@ function mob(){ return _txIsMobile(); }
       balanceCaps:'BALANCE', equityCaps:'EQUITY', marginCaps:'MARGIN', freeMarginCaps:'FREE MARGIN',
       openPnlShort:'OPEN P&L', marginLvlCaps:'MARGIN LEVEL', noFinanceTxYet:'No financial transactions yet',
       sideLbl:'Side', amountLbl:'Amount', dateTimeLbl:'Date/Time', closeLbl:'Close', pnlLbl:'P&L',
-      dateTimeLbl2:'Time', pnlDollarLbl:'P&L $', reasonLbl:'Reason', noHistDesktop:'No trade history',
+      dateTimeLbl2:'Time', histOpenTimeLbl:'Open Time', histCloseTimeLbl:'Close Time', pnlDollarLbl:'P&L $', reasonLbl:'Reason', noHistDesktop:'No trade history',
       typeLbl2:'Type', actionLbl:'Action',
       catBist:'BIST', catForex:'FOREX PAIRS', catCommodity:'COMMODITIES',
       catIndices:'INDICES', catCrypto:'CRYPTO', catStocks:'STOCKS', catFav:'FAVORITES',
